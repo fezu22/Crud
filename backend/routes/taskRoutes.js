@@ -12,7 +12,8 @@ router.get('/', async (req, res) => {
     const tasks = await Task.find({ user: req.user._id }).sort({ createdAt: -1 });
     res.json(tasks);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('❌ Error fetching tasks:', err);
+    res.status(500).json({ message: err.message || 'Failed to fetch tasks' });
   }
 });
 
@@ -25,7 +26,8 @@ router.get('/:id', async (req, res) => {
     }
     res.json(task);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('❌ Error fetching task by ID:', err);
+    res.status(500).json({ message: err.message || 'Failed to fetch task' });
   }
 });
 
@@ -46,7 +48,8 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(task);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('❌ Error creating task:', err);
+    res.status(500).json({ message: err.message || 'Failed to create task' });
   }
 });
 
@@ -65,7 +68,8 @@ router.put('/:id', async (req, res) => {
 
     res.json(task);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('❌ Error updating task:', err);
+    res.status(500).json({ message: err.message || 'Failed to update task' });
   }
 });
 
@@ -80,7 +84,8 @@ router.delete('/:id', async (req, res) => {
 
     res.json({ message: 'Task removed' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('❌ Error deleting task:', err);
+    res.status(500).json({ message: err.message || 'Failed to delete task' });
   }
 });
 

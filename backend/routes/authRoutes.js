@@ -49,10 +49,17 @@ router.post('/register', async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('❌ Error in /register:', err);
+    if (err.code === 11000) {
+      return res.status(400).json({ message: 'A user with this email already exists' });
+    }
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map((e) => e.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
     res.status(500).json({ message: err.message || 'Server error during registration' });
   }
 });
-
 
 router.post('/login', async (req, res) => {
   try {
@@ -84,6 +91,7 @@ router.post('/login', async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('❌ Error in /login:', err);
     res.status(500).json({ message: err.message || 'Server error during login' });
   }
 });
@@ -98,6 +106,7 @@ router.get('/me', auth, async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('❌ Error in /me:', err);
     res.status(500).json({ message: err.message || 'Server error fetching user profile' });
   }
 });
