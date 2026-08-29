@@ -5438,12 +5438,17 @@ react-is@^19.2.3:
   resolved "https://registry.npmjs.org/react-is/-/react-is-19.2.8.tgz"
   integrity sha512-s5un28nYxKJw5gvUHyW5PCC28CvBqLu9r3cWgzHT4Vo/5fqqkFcdRYsGcKf50WMPpjjFZS5d76fn3YCo2njKwQ==
 
-react-native-safe-area-context@^5.5.2:
+react-native-alert-notification@^0.4.2:
+  version "0.4.2"
+  resolved "https://registry.npmjs.org/react-native-alert-notification/-/react-native-alert-notification-0.4.2.tgz"
+  integrity sha512-98EQ+DtI7thEAHzoXMbN8dZRCFcoGXMRYYIKvooPPdASuuZIuON4oxCbJNDb6r6lebnPc/25JCD1tJPaoPNWnw==
+
+react-native-safe-area-context@*, react-native-safe-area-context@^5.5.2:
   version "5.8.0"
   resolved "https://registry.npmjs.org/react-native-safe-area-context/-/react-native-safe-area-context-5.8.0.tgz"
   integrity sha512-t+ZsAVzY/wWzzx34vqGbo3/as9EEESJdbyZNL7Yg5EYX+toYMtMqFoDDCvqZUi35eeGVsXc6pAaEk4edMwbuCQ==
 
-react-native@*, react-native@0.86.2:
+react-native@*, react-native@>=0.62.0, react-native@0.86.2:
   version "0.86.2"
   resolved "https://registry.npmjs.org/react-native/-/react-native-0.86.2.tgz"
   integrity sha512-zbJXGZpwfZGA79Z9ob6Atvfx4nAQL8yJBa35s58E4Oo+khPykfQP2sTeumkKbjwajFYfVayg8pj7Il9nIfTk7A==
@@ -6094,11 +6099,6 @@ supports-preserve-symlinks-flag@^1.0.0:
   version "1.0.0"
   resolved "https://registry.npmjs.org/supports-preserve-symlinks-flag/-/supports-preserve-symlinks-flag-1.0.0.tgz"
   integrity sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==
-
-sweetalert2@^11.26.25:
-  version "11.26.25"
-  resolved "https://registry.npmjs.org/sweetalert2/-/sweetalert2-11.26.25.tgz"
-  integrity sha512-+hunCOJdJ6FLj04T9YSLvvZXRjsvIkTeTKP2e4VF8CaBias961BTnWiSFAy7F/CM5eq3QK2Rraoc5Gzftslvkg==
 
 terser@^5.15.0:
   version "5.49.0"
