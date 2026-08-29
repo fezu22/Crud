@@ -1,76 +1,116 @@
-const BASE_URL = 'http://192.168.1.7:5000/api/tasks';
+const API_BASE = 'http://192.168.1.4:5000/api'; // Use PC's local IP for physical device / emulator
 
-// Custom fetch with timeout so it doesn't load forever
-const fetchWithTimeout = async (url, options = {}, timeout = 5000) => {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    clearTimeout(id);
-    return response;
-  } catch (error) {
-    clearTimeout(id);
-    throw error;
+const getHeaders = (token) => {
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
+  return headers;
 };
 
-export const getTasks = async () => {
-  try {
-    const response = await fetchWithTimeout(BASE_URL);
-    if (!response.ok) throw new Error('Failed to fetch tasks');
-    return await response.json();
-  } catch (error) {
-    console.error('getTasks Error:', error);
-    throw error;
-  }
-};
+// ================= AUTH API =================
 
-export const createTask = async (taskData) => {
-  try {
-    const response = await fetchWithTimeout(BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(taskData),
-    });
-    if (!response.ok) throw new Error('Failed to create task');
-    return await response.json();
-  } catch (error) {
-    console.error('createTask Error:', error);
-    throw error;
-  }
-};
+export async function registerUser(name, email, password) {
+  const url = `${API_BASE}/auth/register`;
+  console.log('REGISTER REQUEST URL:', url);
 
-export const updateTask = async (id, taskData) => {
-  try {
-    const response = await fetchWithTimeout(`${BASE_URL}/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(taskData),
-    });
-    if (!response.ok) throw new Error('Failed to update task');
-    return await response.json();
-  } catch (error) {
-    console.error('updateTask Error:', error);
-    throw error;
-  }
-};
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ name, email, password }),
+  });
 
-export const deleteTask = async (id) => {
+  const rawText = await response.text();
+  console.log('REGISTER RAW RESPONSE STATUS:', response.status);
+  console.log('REGISTER RAW RESPONSE BODY:', rawText);
+
+  let data;
   try {
-    const response = await fetchWithTimeout(`${BASE_URL}/${id}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) throw new Error('Failed to delete task');
-    return await response.json();
-  } catch (error) {
-    console.error('deleteTask Error:', error);
-    throw error;
+    data = JSON.parse(rawText);
+  } catch (e) {
+    throw new Error('Server returned non-JSON: ' + rawText.substring(0, 200));
   }
-};
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Registration failed');
+  }
+  return data;
+}
+
+export async function loginUser(email, password) {
+  const response = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Login failed');
+  }
+  return data;
+}
+
+export async function getCurrentUser(token) {
+  const response = await fetch(`${API_BASE}/auth/me`, {
+    method: 'GET',
+    headers: getHeaders(token),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch user profile');
+  }
+  return data;
+}
+
+// ================= TASK API =================
+
+export async function getTasks(token) {
+  const response = await fetch(`${API_BASE}/tasks`, {
+    headers: getHeaders(token),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to fetch tasks');
+  }
+  return data;
+}
+
+export async function createTask(taskData, token) {
+  const response = await fetch(`${API_BASE}/tasks`, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify(taskData),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to create task');
+  }
+  return data;
+}
+
+export async function updateTask(id, taskData, token) {
+  const response = await fetch(`${API_BASE}/tasks/${id}`, {
+    method: 'PUT',
+    headers: getHeaders(token),
+    body: JSON.stringify(taskData),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to update task');
+  }
+  return data;
+}
+
+export async function deleteTask(id, token) {
+  const response = await fetch(`${API_BASE}/tasks/${id}`, {
+    method: 'DELETE',
+    headers: getHeaders(token),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to delete task');
+  }
+  return data;
+}

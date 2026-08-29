@@ -11,9 +11,6 @@ const generateToken = (userId) => {
   return jwt.sign({ id: userId }, secret, { expiresIn: '7d' });
 };
 
-// @route   POST /api/auth/register
-// @desc    Register a new user
-// @access  Public
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -56,9 +53,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// @route   POST /api/auth/login
-// @desc    Authenticate user & get token
-// @access  Public
+
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -93,9 +88,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// @route   GET /api/auth/me
-// @desc    Get current user profile
-// @access  Private
 router.get('/me', auth, async (req, res) => {
   try {
     res.json({
