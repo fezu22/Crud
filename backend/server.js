@@ -10,6 +10,7 @@ const cors = require('cors');
 const taskRoutes = require('./routes/taskRoutes');
 const authRoutes = require('./routes/authRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
+const projectRoutes = require('./routes/projectRoutes');
 
 const app = express();
 app.use(cors());
@@ -36,6 +37,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/projects', projectRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

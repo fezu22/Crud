@@ -10,6 +10,17 @@ const getHeaders = (token) => {
   return headers;
 };
 
+async function request(path, { method = 'GET', token, body } = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: getHeaders(token),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'Request failed');
+  return data;
+}
+
 // ================= AUTH API =================
 
 export async function registerUser(name, emailOrPhone, password, extraPhone) {
@@ -123,6 +134,24 @@ export async function deleteTask(id, token) {
     throw new Error(data.message || 'Failed to delete task');
   }
   return data;
+}
+
+// ================= PROJECT API =================
+
+export async function getProjects(token) {
+  return request('/projects', { token });
+}
+
+export async function createProject(projectData, token) {
+  return request('/projects', { method: 'POST', token, body: projectData });
+}
+
+export async function updateProject(id, projectData, token) {
+  return request(`/projects/${id}`, { method: 'PUT', token, body: projectData });
+}
+
+export async function deleteProject(id, token) {
+  return request(`/projects/${id}`, { method: 'DELETE', token });
 }
 
 // ================= CLOUDINARY MEDIA API =================

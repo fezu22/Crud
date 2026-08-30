@@ -34,13 +34,25 @@ import {
   uploadMedia,
   getMyMedia,
   deleteMedia,
+  getProjects,
+  createProject,
 } from './src/services/api';
+import {
+  BottomNav,
+  ProjectsScreen,
+  ProfileScreen,
+  ProjectDetailModal,
+  TaskDetailModal,
+  TaskFormModal,
+  ProjectFormModal,
+} from './src/screens/WorkspaceScreens';
 import LoginScreen from './src/screens/LoginScreen';
 import AutoHeightImage from './src/components/AutoHeightImage';
 import AnimatedImagePreview from './src/components/AnimatedImagePreview';
 import COLORS from './src/theme/colors';
 import formatTimestamp from './src/utils/formatTimestamp';
 import styles from './src/styles/appStyles';
+import useReducedMotion from './src/hooks/useReducedMotion';
 
 // Enable LayoutAnimation on Android
 if (
@@ -66,6 +78,17 @@ export default function App() {
   const [mediaList, setMediaList] = useState([]);
   const [feedLoading, setFeedLoading] = useState(false);
   const [feedRefreshing, setFeedRefreshing] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [taskFilter, setTaskFilter] = useState('All');
+  const [projects, setProjects] = useState([]);
+  const [activeTab, setActiveTab] = useState('home');
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [taskForm, setTaskForm] = useState(false);
+  const [projectForm, setProjectForm] = useState(false);
+  const [detailProject, setDetailProject] = useState(false);
+  const [savingForm, setSavingForm] = useState(false);
+  const [formProject, setFormProject] = useState(null);
 
   // Post composer state
   const [postText, setPostText] = useState('');
@@ -77,6 +100,7 @@ export default function App() {
   const [editingImageUris, setEditingImageUris] = useState([]);
   const composerMotion = useRef(new Animated.Value(0)).current;
   const lastScrollOffset = useRef(0);
+  const reduceMotion = useReducedMotion();
 
   // Confirmation Modal
   const [confirmConfig, setConfirmConfig] = useState({
@@ -169,6 +193,7 @@ export default function App() {
     } else {
       setTasks([]);
       setMediaList([]);
+      setProjects([]);
       setEditingTaskId(null);
     }
     // Fetch only when the active session changes.
@@ -181,9 +206,10 @@ export default function App() {
     setFeedLoading(true);
 
     try {
-      const [tasksData, mediaData] = await Promise.all([
+      const [tasksData, mediaData, projectData] = await Promise.all([
         getTasks(authToken).catch(() => []),
         getMyMedia(authToken).catch(() => []),
+        getProjects(authToken).catch(() => []),
       ]);
 
       LayoutAnimation.configureNext(
@@ -192,6 +218,7 @@ export default function App() {
 
       setTasks(tasksData || []);
       setMediaList(mediaData || []);
+      setProjects(projectData || []);
     } catch (err) {
       Dialog.show({
         type: ALERT_TYPE.DANGER,
@@ -213,16 +240,33 @@ export default function App() {
   }
 
   const feedItems = useMemo(() => {
-    const taskItems = tasks.map((t) => ({
-      ...t,
-      feedType: 'task',
-      feedDate:
-        t.createdAt ||
-        t.updatedAt ||
-        new Date().toISOString(),
-    }));
+    const normalizedSearch = searchText.trim().toLowerCase();
+    const taskItems = tasks
+      .filter((task) => {
+        const matchesSearch = !normalizedSearch ||
+          task.title?.toLowerCase().includes(normalizedSearch) ||
+          task.description?.toLowerCase().includes(normalizedSearch);
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfTomorrow = new Date(startOfToday);
+        startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+        const dueDate = task.dueDate ? new Date(task.dueDate) : null;
+        const matchesFilter = taskFilter === 'All' ||
+          (taskFilter === 'Today' && dueDate && dueDate >= startOfToday && dueDate < startOfTomorrow) ||
+          (taskFilter === 'Upcoming' && dueDate && dueDate >= startOfTomorrow && !task.completed) ||
+          (taskFilter === 'Completed' && task.completed);
+        return matchesSearch && matchesFilter;
+      })
+      .map((t) => ({
+        ...t,
+        feedType: 'task',
+        feedDate: t.createdAt || t.updatedAt || new Date().toISOString(),
+      }));
 
-    const mediaItems = mediaList.map((m) => ({
+    const mediaItems = mediaList.filter((media) =>
+      taskFilter === 'All' &&
+      (!normalizedSearch || media.title?.toLowerCase().includes(normalizedSearch))
+    ).map((m) => ({
       ...m,
       feedType: 'media',
       feedDate: m.createdAt || new Date().toISOString(),
@@ -232,7 +276,7 @@ export default function App() {
       (a, b) =>
         new Date(b.feedDate) - new Date(a.feedDate)
     );
-  }, [tasks, mediaList]);
+  }, [tasks, mediaList, searchText, taskFilter]);
 
   // AUTH
 
@@ -664,15 +708,77 @@ export default function App() {
     });
   }
 
+  function openTaskForm(task = null, project = null) {
+    setEditingTaskId(task?._id || null);
+    setFormProject(project);
+    setTaskForm(true);
+  }
+
+  async function saveRichTask(form) {
+    setSavingForm(true);
+    try {
+      const uploaded = await Promise.all(
+        form.newImages.map(image => uploadMedia(image, form.title, token))
+      );
+      const imageUrls = [
+        ...form.imageUrls,
+        ...uploaded.map(item => item.imageUrl).filter(Boolean),
+      ];
+      const payload = {...form, imageUrls, imageUrl: imageUrls[0] || ''};
+      delete payload.newImages;
+      const current = editingTaskId
+        ? await updateTask(editingTaskId, payload, token)
+        : await createTask(payload, token);
+      setTasks(items => editingTaskId
+        ? items.map(item => item._id === current._id ? current : item)
+        : [current, ...items]
+      );
+      setSelectedTask(current);
+      setTaskForm(false);
+      setEditingTaskId(null);
+      setFormProject(null);
+    } catch (error) {
+      Dialog.show({type: ALERT_TYPE.DANGER, title: 'Could not save', textBody: error.message, button: 'OK'});
+    } finally {
+      setSavingForm(false);
+    }
+  }
+
+  async function saveNewProject(form) {
+    setSavingForm(true);
+    try {
+      const created = await createProject(form, token);
+      setProjects(items => [created, ...items]);
+      setProjectForm(false);
+    } catch (error) {
+      Dialog.show({type: ALERT_TYPE.DANGER, title: 'Could not save', textBody: error.message, button: 'OK'});
+    } finally {
+      setSavingForm(false);
+    }
+  }
+
+  async function toggleSubtask(task, index) {
+    const subtasks = task.subtasks.map((item, itemIndex) =>
+      itemIndex === index ? {...item, done: !item.done} : item
+    );
+    const updated = await updateTask(task._id, {subtasks}, token);
+    setTasks(items => items.map(item => item._id === updated._id ? updated : item));
+    setSelectedTask(updated);
+  }
+
   function renderFeedItem({ item }) {
     if (item.feedType === 'task') {
+      const taskImageUrls = item.imageUrls?.length
+        ? item.imageUrls
+        : item.imageUrl
+          ? [item.imageUrl]
+          : [];
+
       return (
         <View style={styles.feedCard}>
           <TouchableOpacity
             style={styles.feedCardMain}
-            onPress={() =>
-              handleToggleTask(item)
-            }
+            onPress={() => setSelectedTask(item)}
             activeOpacity={0.7}
           >
             <View
@@ -714,11 +820,21 @@ export default function App() {
             </View>
           </TouchableOpacity>
 
-          {item.imageUrl ? (
-            <AutoHeightImage
-              uri={item.imageUrl}
-              style={styles.feedImageTop}
-            />
+          {taskImageUrls.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.feedGallery}
+            >
+              {taskImageUrls.map((uri, index) => (
+                <Image
+                  key={`${uri}-${index}`}
+                  source={{ uri }}
+                  style={styles.feedThumbnail}
+                  resizeMode={'cover'}
+                />
+              ))}
+            </ScrollView>
           ) : null}
 
           <View
@@ -999,6 +1115,7 @@ export default function App() {
   ];
 
   function handleFeedScroll(event) {
+    if (reduceMotion) return;
     const offset = Math.max(0, event.nativeEvent.contentOffset.y);
     const delta = offset - lastScrollOffset.current;
     if (Math.abs(delta) > 6) {
@@ -1018,51 +1135,71 @@ export default function App() {
         style={styles.container}
       >
         <StatusBar
-          barStyle="light-content"
+          barStyle="dark-content"
           backgroundColor={COLORS.bg}
         />
+
+        {activeTab === 'home' ? <>
 
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text
-              style={styles.headerTitle}
-            >
-              TaskFlow
-            </Text>
-
-            <Text
-              style={styles.headerSub}
-            >
-              Hello,{' '}
-              <Text
-                style={
-                  styles.userNameHighlight
-                }
-              >
-                {user?.name ||
-                  user?.phoneNumber ||
-                  'User'}
-              </Text>
-            </Text>
+            <Text style={styles.headerSub}>Good morning</Text>
+            <Text style={styles.headerTitle}>My Tasks</Text>
           </View>
 
           <TouchableOpacity
-            style={styles.logoutBtn}
+            style={styles.avatar}
             onPress={handleLogout}
           >
-            <Text
-              style={
-                styles.logoutBtnText
-              }
-            >
-              Logout
+            <Text style={styles.avatarText}>
+              {(user?.name || user?.phoneNumber || 'U').charAt(0).toUpperCase()}
             </Text>
           </TouchableOpacity>
         </View>
 
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, styles.statLavender]}>
+            <Text style={[styles.statValue, styles.statPurple]}>{tasks.length}</Text>
+            <Text style={[styles.statLabel, styles.statPurple]}>Total</Text>
+          </View>
+          <View style={[styles.statCard, styles.statMint]}>
+            <Text style={[styles.statValue, styles.statTeal]}>{tasks.filter((task) => !task.completed).length}</Text>
+            <Text style={[styles.statLabel, styles.statTeal]}>Open</Text>
+          </View>
+          <View style={[styles.statCard, styles.statPeach]}>
+            <Text style={[styles.statValue, styles.statOrange]}>{tasks.filter((task) => task.completed).length}</Text>
+            <Text style={[styles.statLabel, styles.statOrange]}>Done</Text>
+          </View>
+        </View>
+
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>⌕</Text>
+          <TextInput
+            style={styles.searchInput}
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Search tasks..."
+            placeholderTextColor={COLORS.textMuted}
+          />
+        </View>
+
+        <ScrollView style={styles.filterScroller} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          {['All', 'Today', 'Upcoming', 'Completed'].map((filter) => (
+            <TouchableOpacity
+              key={filter}
+              style={[styles.filterChip, taskFilter === filter && styles.filterChipActive]}
+              onPress={() => setTaskFilter(filter)}
+            >
+              <Text style={[styles.filterChipText, taskFilter === filter && styles.filterChipTextActive]}>
+                {filter}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
         {/* Composer */}
-        <Animated.View
+        {false && <Animated.View
           style={[
             styles.composerCard,
             {
@@ -1267,7 +1404,7 @@ export default function App() {
               </TouchableOpacity>
             </View>
           </View>
-        </Animated.View>
+        </Animated.View>}
 
         {/* Feed */}
         <View
@@ -1311,6 +1448,56 @@ export default function App() {
             />
           )}
         </View>
+
+        </> : activeTab === 'projects' ? (
+          <ProjectsScreen
+            projects={projects}
+            tasks={tasks}
+            onAdd={() => setProjectForm(true)}
+            onOpen={(project) => { setSelectedProject(project); setDetailProject(true); }}
+          />
+        ) : (
+          <ProfileScreen user={user} tasks={tasks} projects={projects} onLogout={handleLogout} />
+        )}
+
+        <BottomNav
+          active={activeTab}
+          onChange={setActiveTab}
+          onAdd={() => openTaskForm()}
+        />
+
+        <ProjectDetailModal
+          visible={detailProject}
+          project={selectedProject}
+          tasks={tasks}
+          onClose={() => setDetailProject(false)}
+          onTask={setSelectedTask}
+          onAddTask={(project) => openTaskForm(null, project)}
+        />
+        <TaskDetailModal
+          visible={!!selectedTask && !taskForm}
+          task={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onToggle={async (task) => { await handleToggleTask(task); setSelectedTask({...task, completed: !task.completed}); }}
+          onEdit={(task) => openTaskForm(task)}
+          onDelete={(id) => { setSelectedTask(null); handleDeleteTask(id); }}
+          onToggleSubtask={toggleSubtask}
+        />
+        <TaskFormModal
+          visible={taskForm}
+          task={editingTaskId ? tasks.find(task => task._id === editingTaskId) : null}
+          project={formProject}
+          projects={projects}
+          saving={savingForm}
+          onClose={() => { setTaskForm(false); setEditingTaskId(null); setFormProject(null); }}
+          onSave={saveRichTask}
+        />
+        <ProjectFormModal
+          visible={projectForm}
+          saving={savingForm}
+          onClose={() => setProjectForm(false)}
+          onSave={saveNewProject}
+        />
 
         {renderConfirmModal()}
       </SafeAreaView>

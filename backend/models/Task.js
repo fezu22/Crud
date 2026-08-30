@@ -29,6 +29,14 @@ const TaskSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    dueDate: { type: Date, default: null },
+    priority: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
+    category: { type: String, enum: ['Personal', 'Work', 'Health', 'Shopping'], default: 'Personal' },
+    projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },
+    subtasks: {
+      type: [{ label: { type: String, required: true, trim: true }, done: { type: Boolean, default: false } }],
+      default: [],
+    },
   },
   { timestamps: true }
 );

@@ -8,6 +8,8 @@ const styles = StyleSheet.create({
   feedImageTop: {
     marginTop: 10,
   },
+  feedGallery: { gap: 10, paddingTop: 12, paddingRight: 4 },
+  feedThumbnail: { width: 132, height: 104, borderRadius: 16, backgroundColor: COLORS.surfaceMuted },
   feedImageBottom: {
     marginBottom: 10,
   },
@@ -286,11 +288,12 @@ const styles = StyleSheet.create({
       'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 18,
+    paddingBottom: 12,
   },
 
   headerTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
     color: COLORS.textPrimary,
     letterSpacing: 0.3,
@@ -298,9 +301,32 @@ const styles = StyleSheet.create({
 
   headerSub: {
     fontSize: 13,
-    color: COLORS.textSecondary,
-    marginTop: 2,
+    color: COLORS.textMuted,
+    marginBottom: 2,
+    fontWeight: '600',
   },
+
+  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: COLORS.white, fontWeight: '800', fontSize: 15 },
+  statsRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 12 },
+  statCard: { flex: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11 },
+  statLavender: { backgroundColor: COLORS.lavender },
+  statMint: { backgroundColor: COLORS.mint },
+  statPeach: { backgroundColor: COLORS.peach },
+  statValue: { fontSize: 21, lineHeight: 24, fontWeight: '800' },
+  statLabel: { fontSize: 11, fontWeight: '700', opacity: 0.72 },
+  statPurple: { color: COLORS.accent },
+  statTeal: { color: '#0F766E' },
+  statOrange: { color: '#C2410C' },
+  searchBox: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, paddingHorizontal: 14, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.cardBorder, borderRadius: 14 },
+  searchIcon: { color: COLORS.textMuted, fontSize: 22, marginRight: 8 },
+  searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
+  filterScroller: { flexGrow: 0, height: 52, maxHeight: 52 },
+  filterRow: { paddingLeft: 16, paddingRight: 8, paddingBottom: 7, alignItems: 'flex-start' },
+  filterChip: { paddingHorizontal: 17, paddingVertical: 9, borderRadius: 18, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.cardBorder, marginRight: 8 },
+  filterChipActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  filterChipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
+  filterChipTextActive: { color: COLORS.white },
 
   userNameHighlight: {
     color: COLORS.accentLight,
@@ -325,11 +351,16 @@ const styles = StyleSheet.create({
   composerCard: {
     marginHorizontal: 16,
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
+    shadowColor: COLORS.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 2,
   },
 
   composerInput: {
@@ -347,30 +378,24 @@ const styles = StyleSheet.create({
       COLORS.inputBorder,
   },
 
-  previewContainer: {
-    marginTop: 10,
-    borderRadius: 12,
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor:
-      COLORS.inputBg,
-  },
+  previewList: { gap: 10, paddingTop: 12, paddingRight: 4 },
+  previewTile: { width: 84, height: 84, position: 'relative' },
 
   previewImage: {
-    width: '100%',
-    height: 220,
-    borderRadius: 12,
+    width: 84,
+    height: 84,
+    borderRadius: 14,
     backgroundColor:
       COLORS.inputBg,
   },
 
   previewRemoveBtn: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    top: -5,
+    right: -5,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor:
       'rgba(15, 16, 26, 0.9)',
     alignItems: 'center',
@@ -381,8 +406,8 @@ const styles = StyleSheet.create({
   },
 
   previewRemoveText: {
-    color: COLORS.danger,
-    fontSize: 14,
+    color: COLORS.white,
+    fontSize: 16,
     fontWeight: 'bold',
   },
 
@@ -475,11 +500,16 @@ const styles = StyleSheet.create({
 
   feedCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: COLORS.cardBorder,
+    shadowColor: COLORS.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    elevation: 2,
   },
 
   feedCardMain: {

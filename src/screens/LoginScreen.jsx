@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import COLORS from '../theme/colors';
 import styles from '../styles/loginStyles';
+import useReducedMotion from '../hooks/useReducedMotion';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -83,8 +84,10 @@ export default function LoginScreen({ onLogin, onRegister, isLoading = false }) 
   const [phraseIndex, setPhraseIndex] = useState(0);
   const phraseOpacity = useRef(new Animated.Value(1)).current;
   const phraseTranslate = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reduceMotion) return undefined;
     const interval = setInterval(() => {
       Animated.parallel([
         Animated.timing(phraseOpacity, {
@@ -119,7 +122,7 @@ export default function LoginScreen({ onLogin, onRegister, isLoading = false }) 
     }, 2400);
 
     return () => clearInterval(interval);
-  }, [phraseOpacity, phraseTranslate]);
+  }, [phraseOpacity, phraseTranslate, reduceMotion]);
 
   const handleTabSwitch = (method, isRegister = false) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -269,14 +272,7 @@ export default function LoginScreen({ onLogin, onRegister, isLoading = false }) 
             {PRODUCTIVITY_PHRASES[phraseIndex]}
           </Animated.Text>
         </View>
-        <View style={styles.heroTaskCard}>
-          <View style={styles.heroTaskRow}>
-            <View style={styles.heroCheck}><Text style={styles.heroCheckText}>✓</Text></View>
-            <View style={styles.heroTaskLine} />
-            <View style={styles.heroPill}><Text style={styles.heroPillText}>Medium</Text></View>
-          </View>
-          <View style={styles.heroProgressTrack}><View style={styles.heroProgressValue} /></View>
-        </View>
+       
       </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
