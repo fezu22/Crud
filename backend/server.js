@@ -1,9 +1,15 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+
+// --- DIAGNOSTIC CHECK ---
+console.log("🔍 ENV CHECK -> Cloud Name:", process.env.CLOUDINARY_CLOUD_NAME);
+// ------------------------
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const taskRoutes = require('./routes/taskRoutes');
 const authRoutes = require('./routes/authRoutes');
+const mediaRoutes = require('./routes/mediaRoutes');
 
 const app = express();
 app.use(cors());
@@ -26,8 +32,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/media', mediaRoutes);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
@@ -49,4 +57,3 @@ mongoose
   .catch(function (err) {
     console.error('❌ MongoDB Connection Error:', err.message);
   });
-

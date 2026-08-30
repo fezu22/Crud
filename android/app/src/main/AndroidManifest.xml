@@ -11,6 +11,12 @@
       android:theme="@style/AppTheme"
       android:usesCleartextTraffic="true"
       android:supportsRtl="true">
+
+      <!-- TRUECALLER SDK CLIENT ID -->
+      <meta-data
+          android:name="com.truecaller.android.sdk.ClientId"
+          android:value="gba2osqo7sv3l9m-mzwlk3s5htfsjjkbfjzuc0-ys1i" />
+
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"

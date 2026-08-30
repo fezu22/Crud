@@ -34,16 +34,18 @@ router.get('/:id', async (req, res) => {
 // POST - create a new task for logged-in user
 router.post('/', async (req, res) => {
   try {
-    const { title, description } = req.body;
+    const { title, description, imageUrl, imageUrls = [] } = req.body;
 
-    if (!title || title.trim() === '') {
-      return res.status(400).json({ message: 'Title is required' });
+    if ((!title || title.trim() === '') && !imageUrl && imageUrls.length === 0) {
+      return res.status(400).json({ message: 'Task text or image is required' });
     }
 
     const task = await Task.create({
       user: req.user._id,
-      title: title.trim(),
+      title: title ? title.trim() : '',
       description: description ? description.trim() : '',
+      imageUrl: imageUrl || '',
+      imageUrls: Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : [],
     });
 
     res.status(201).json(task);
@@ -56,9 +58,14 @@ router.post('/', async (req, res) => {
 // PUT - update an existing task (ensuring ownership)
 router.put('/:id', async (req, res) => {
   try {
+    const allowedFields = ['title', 'description', 'imageUrl', 'imageUrls', 'completed'];
+    const updates = Object.fromEntries(
+      Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
+    );
+
     const task = await Task.findOneAndUpdate(
       { _id: req.params.id, user: req.user._id },
-      req.body,
+      updates,
       { new: true, runValidators: true }
     );
 
@@ -90,5 +97,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
-
-

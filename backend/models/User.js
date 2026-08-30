@@ -4,25 +4,41 @@ const UserSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, 'Please provide a name'],
       trim: true,
-      maxlength: [50, 'Name cannot be more than 50 characters'],
+      default: '',
     },
     email: {
       type: String,
-      required: [true, 'Please provide an email'],
       unique: true,
+      sparse: true,
       trim: true,
       lowercase: true,
-      match: [
-        /^\S+@\S+\.\S+$/,
-        'Please provide a valid email address',
-      ],
+      validate: {
+        validator: function (v) {
+          if (!v) return true;
+          return /^\S+@\S+\.\S+$/.test(v);
+        },
+        message: 'Please provide a valid email address',
+      },
+    },
+    phoneNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
     },
     password: {
       type: String,
-      required: [true, 'Please provide a password'],
       minlength: [6, 'Password must be at least 6 characters long'],
+    },
+    truecallerId: {
+      type: String,
+      sparse: true,
+    },
+    authProvider: {
+      type: String,
+      enum: ['email', 'phone', 'truecaller'],
+      default: 'email',
     },
   },
   { timestamps: true }

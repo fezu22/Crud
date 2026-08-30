@@ -1,10 +1,11 @@
 const fs = require('fs');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('./models/User');
-const Task = require('./models/Task');
+const User = require('../models/User');
+const Task = require('../models/Task');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/crudapp';
 const logLines = [];
@@ -83,7 +84,11 @@ async function testAuth() {
       await mongoose.disconnect();
       log('Disconnected from MongoDB.');
     } catch (e) {}
-    fs.writeFileSync('./auth-test-log.txt', logLines.join('\n'), 'utf8');
+    fs.writeFileSync(
+      path.join(__dirname, 'auth-test-log.txt'),
+      logLines.join('\n'),
+      'utf8'
+    );
   }
 }
 

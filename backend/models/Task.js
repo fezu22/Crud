@@ -9,13 +9,21 @@ const TaskSchema = new mongoose.Schema(
     },
     title: {
       type: String,
-      required: true,
+      default: '',
       trim: true,
     },
     description: {
       type: String,
       default: '',
       trim: true,
+    },
+    imageUrl: {
+      type: String,
+      default: '',
+    },
+    imageUrls: {
+      type: [String],
+      default: [],
     },
     completed: {
       type: Boolean,
