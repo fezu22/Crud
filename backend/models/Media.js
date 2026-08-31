@@ -27,6 +27,11 @@ const MediaSchema = new mongoose.Schema(
       default: 'upload',
       index: true,
     },
+    batchId: {
+      type: String,
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );

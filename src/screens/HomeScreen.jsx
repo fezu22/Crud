@@ -38,8 +38,8 @@ function TaskCard({ item, onPress }) {
   const images = item.imageUrls?.length
     ? item.imageUrls
     : item.imageUrl
-    ? [item.imageUrl]
-    : [];
+      ? [item.imageUrl]
+      : [];
   return (
     <TouchableOpacity
       className="mb-4 overflow-hidden rounded-3xl border border-line bg-canvas p-4"
@@ -48,9 +48,8 @@ function TaskCard({ item, onPress }) {
     >
       <View className="flex-row items-start">
         <View
-          className={`mr-3 h-7 w-7 items-center justify-center rounded-lg border-2 ${
-            item.completed ? 'border-brand bg-brand' : 'border-brand'
-          }`}
+          className={`mr-3 h-7 w-7 items-center justify-center rounded-lg border-2 ${item.completed ? 'border-brand bg-brand' : 'border-brand'
+            }`}
         >
           {item.completed && (
             <Text className="font-extrabold text-white">✓</Text>
@@ -58,9 +57,8 @@ function TaskCard({ item, onPress }) {
         </View>
         <View className="flex-1">
           <Text
-            className={`text-base font-extrabold ${
-              item.completed ? 'text-muted line-through' : 'text-ink'
-            }`}
+            className={`text-base font-extrabold ${item.completed ? 'text-muted line-through' : 'text-ink'
+              }`}
           >
             {item.title}
           </Text>
@@ -99,17 +97,34 @@ function TaskCard({ item, onPress }) {
 }
 
 function MediaCard({ item, onDelete }) {
+  const images = item.imageUrls?.length
+    ? item.imageUrls
+    : item.imageUrl
+      ? [item.imageUrl]
+      : [];
   return (
     <View className="mb-4 overflow-hidden rounded-3xl border border-line bg-canvas p-4">
-      {item.imageUrl ? (
+      {images.length > 1 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {images.map((uri, index) => (
+            <Image
+              key={uri + index}
+              source={{ uri }}
+              className="mr-2 h-52 w-52 rounded-2xl"
+              resizeMode="cover"
+            />
+          ))}
+        </ScrollView>
+      ) : images.length === 1 ? (
         <Image
-          source={{ uri: item.imageUrl }}
+          source={{ uri: images[0] }}
           className="h-52 w-full rounded-2xl"
           resizeMode="cover"
         />
       ) : null}
       <Text className="mt-3 text-base font-extrabold text-ink">
         {item.title || 'Uploaded image'}
+        {images.length > 1 ? ` · ${images.length} photos` : ''}
       </Text>
       <View className="mt-3 flex-row items-center justify-between">
         <Text className="text-xs font-semibold text-muted">
@@ -196,17 +211,15 @@ export default function HomeScreen({
         {filters.map(value => (
           <TouchableOpacity
             key={value}
-            className={`mr-2 rounded-full border px-5 py-2.5 ${
-              filter === value
+            className={`mr-2 rounded-full border px-5 py-2.5 ${filter === value
                 ? 'border-brand bg-brand'
                 : 'border-line bg-canvas'
-            }`}
+              }`}
             onPress={() => onFilter(value)}
           >
             <Text
-              className={`text-xs font-extrabold ${
-                filter === value ? 'text-white' : 'text-muted'
-              }`}
+              className={`text-xs font-extrabold ${filter === value ? 'text-white' : 'text-muted'
+                }`}
             >
               {value}
             </Text>

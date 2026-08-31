@@ -156,7 +156,7 @@ export async function deleteProject(id, token) {
 
 // ================= CLOUDINARY MEDIA API =================
 
-export async function uploadMedia(file, title, token, kind = 'upload') {
+export async function uploadMedia(file, title, token, kind = 'upload', batchId = null) {
   const formData = new FormData();
   formData.append('image', {
     uri: file.uri,
@@ -168,6 +168,9 @@ export async function uploadMedia(file, title, token, kind = 'upload') {
     formData.append('title', title);
   }
   formData.append('kind', kind);
+  if (batchId) {
+    formData.append('batchId', batchId);
+  }
 
   const response = await fetch(`${API_BASE_URL}/media/upload`, {
     method: 'POST',

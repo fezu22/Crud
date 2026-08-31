@@ -94,6 +94,7 @@ router.post('/upload', upload.single('image'), async (req, res) => {
         req.body.kind === 'taskAttachment'
           ? 'taskAttachment'
           : 'upload',
+      batchId: req.body.batchId || null,
     });
 
     console.log(`✅ Media created in MongoDB for user: ${req.user._id} (${media._id})`);
@@ -145,7 +146,7 @@ router.put('/:id', async (req, res, next) => {
       try {
         await destroyCloudinaryAsset(media.cloudinaryPublicId);
       } catch (error) {
-        await destroyCloudinaryAsset(newPublicId).catch(() => {});
+        await destroyCloudinaryAsset(newPublicId).catch(() => { });
         return res.status(502).json({
           message: 'Old Cloudinary image could not be removed. Nothing was changed.',
         });
@@ -157,7 +158,7 @@ router.put('/:id', async (req, res, next) => {
     if (req.file) await replaceTaskImageReferences(req.user._id, oldUrl, newUrl);
     res.json(media);
   } catch (err) {
-    if (req.file) await destroyCloudinaryAsset(newPublicId).catch(() => {});
+    if (req.file) await destroyCloudinaryAsset(newPublicId).catch(() => { });
     res
       .status(500)
       .json({ message: err.message || 'Failed to update media' });

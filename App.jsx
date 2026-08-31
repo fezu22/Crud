@@ -46,6 +46,10 @@ import {
   createProject,
 } from './src/services/api';
 
+function generateBatchId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 if (
   Platform.OS === 'android' &&
   UIManager.setLayoutAnimationEnabledExperimental
@@ -247,19 +251,52 @@ export default function App() {
         task.imageUrls?.length
           ? task.imageUrls
           : task.imageUrl
-          ? [task.imageUrl]
-          : [],
+            ? [task.imageUrl]
+            : [],
       ),
     );
-    const mediaItems = media
-      .filter(
-        item =>
-          filter === 'All' &&
-          item.kind !== 'taskAttachment' &&
-          !taskImageUrls.has(item.imageUrl) &&
-          (!query || item.title?.toLowerCase().includes(query)),
-      )
-      .map(item => ({ ...item, feedType: 'media', feedDate: item.createdAt }));
+    const standaloneMedia = media.filter(
+      item =>
+        filter === 'All' &&
+        item.kind !== 'taskAttachment' &&
+        !taskImageUrls.has(item.imageUrl) &&
+        (!query || item.title?.toLowerCase().includes(query)),
+    );
+    // Group images that were uploaded together (same batchId) into a single
+    // feed card, so "3 photos picked at once" show as one card with all 3
+    // images and one caption, instead of 3 separate duplicate cards.
+    const batched = new Map();
+    const singles = [];
+    standaloneMedia.forEach(item => {
+      if (item.batchId) {
+        if (!batched.has(item.batchId)) batched.set(item.batchId, []);
+        batched.get(item.batchId).push(item);
+      } else {
+        singles.push(item);
+      }
+    });
+    const mediaItems = [
+      ...Array.from(batched.values()).map(group => {
+        const sorted = [...group].sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+        );
+        const first = sorted[0];
+        return {
+          ...first,
+          _id: first.batchId,
+          mediaIds: sorted.map(entry => entry._id),
+          imageUrls: sorted.map(entry => entry.imageUrl).filter(Boolean),
+          feedType: 'media',
+          feedDate: first.createdAt,
+        };
+      }),
+      ...singles.map(item => ({
+        ...item,
+        imageUrls: item.imageUrl ? [item.imageUrl] : [],
+        feedType: 'media',
+        feedDate: item.createdAt,
+      })),
+    ];
     return [...taskItems, ...mediaItems].sort(
       (a, b) => new Date(b.feedDate) - new Date(a.feedDate),
     );
@@ -285,9 +322,10 @@ export default function App() {
   async function saveTask(form) {
     setSaving(true);
     try {
+      const batchId = generateBatchId();
       const uploaded = await Promise.all(
         form.newImages.map(image =>
-          uploadMedia(image, form.title, token, 'taskAttachment'),
+          uploadMedia(image, form.title, token, 'taskAttachment', batchId),
         ),
       );
       const imageUrls = [
@@ -350,15 +388,21 @@ export default function App() {
     });
   }
   function removeMedia(item) {
+    const idsToDelete = item.mediaIds?.length ? item.mediaIds : [item._id];
     ask({
       title: 'Delete Media',
-      message: 'Permanently delete this uploaded image?',
+      message:
+        idsToDelete.length > 1
+          ? `Permanently delete these ${idsToDelete.length} uploaded images?`
+          : 'Permanently delete this uploaded image?',
       confirmText: 'Delete',
       isDestructive: true,
       onConfirm: async () => {
         try {
-          await deleteMedia(item._id, token);
-          setMedia(items => items.filter(value => value._id !== item._id));
+          await Promise.all(idsToDelete.map(id => deleteMedia(id, token)));
+          setMedia(items =>
+            items.filter(value => !idsToDelete.includes(value._id)),
+          );
         } catch (error) {
           showError('Could not delete media', error);
         }
