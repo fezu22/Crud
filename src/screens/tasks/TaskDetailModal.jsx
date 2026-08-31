@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import ModalHeader from '../../components/ModalHeader';
+import DraggableSuccessModal from '../../components/DraggableSuccessModal';
 export default function TaskDetailModal({
   visible,
   task,
@@ -16,6 +17,8 @@ export default function TaskDetailModal({
   onEdit,
   onDelete,
   onToggleSubtask,
+  successNotification,
+  onSuccessOk,
 }) {
   if (!task) return null;
   const images = task.imageUrls?.length
@@ -122,6 +125,12 @@ export default function TaskDetailModal({
             </Text>
           </TouchableOpacity>
         </View>
+
+        <DraggableSuccessModal
+          visible={successNotification?.visible}
+          message={successNotification?.message}
+          onClose={onSuccessOk}
+        />
       </View>
     </Modal>
   );

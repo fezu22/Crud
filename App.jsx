@@ -1,21 +1,11 @@
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useEffect, useState } from 'react';
 import './global.css';
 import {
-  Animated,
   Keyboard,
   LayoutAnimation,
-  Modal,
-  PanResponder,
   Platform,
   SafeAreaView,
   StatusBar,
-  Text,
-  TouchableOpacity,
   UIManager,
   View,
 } from 'react-native';
@@ -24,47 +14,35 @@ import {
   ALERT_TYPE,
   Dialog,
 } from 'react-native-alert-notification';
-import LoginScreen from './src/screens/LoginScreen';
-import HomeScreen from './src/screens/HomeScreen';
+import DraggableSuccessModal from './src/components/DraggableSuccessModal';
 import ConfirmDialog from './src/components/ConfirmDialog';
-import {
-  loadSession,
-  saveSession,
-  clearSession,
-} from './src/storage/sessionStorage';
 import BottomNav from './src/navigation/BottomNav';
+import HomeScreen from './src/screens/HomeScreen';
+import LoginScreen from './src/screens/LoginScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
 import ProjectsScreen from './src/screens/projects/ProjectsScreen';
 import ProjectDetailModal from './src/screens/projects/ProjectDetailModal';
 import ProjectFormModal from './src/screens/projects/ProjectFormModal';
 import TaskDetailModal from './src/screens/tasks/TaskDetailModal';
 import TaskFormModal from './src/screens/tasks/TaskFormModal';
+import useFeedItems from './src/hooks/useFeedItems';
+import useNotificationNavigation from './src/hooks/useNotificationNavigation';
 import usePreferences from './src/hooks/usePreferences';
+import useTasks from './src/hooks/useTasks';
 import { appThemes } from './src/theme/appTheme';
 import { showDueTaskReminder } from './src/services/notifications';
 import {
-  registerUser,
-  loginUser,
-  getTasks,
-  createTask,
-  updateTask,
-  deleteTask,
-  uploadMedia,
-  getMyMedia,
-  deleteMedia,
-  deleteMediaByUrl,
-  getProjects,
   createProject,
+  deleteMedia,
+  getMyMedia,
+  getProjects,
+  getTasks,
+  loginUser,
+  registerUser,
 } from './src/services/api';
+import { clearSession, loadSession, saveSession } from './src/storage/sessionStorage';
 
-function generateBatchId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
@@ -78,184 +56,11 @@ const emptyConfirm = {
   onConfirm: null,
 };
 
-function localDateKey(value) {
-  if (!value) return '';
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-    return value.slice(0, 10);
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-function DraggableSuccessModal({ visible, message, onClose }) {
-  const position = useRef(
-    new Animated.ValueXY({
-      x: 0,
-      y: 0,
-    }),
-  ).current;
-
-  const lastPosition = useRef({
-    x: 0,
-    y: 0,
-  });
-
-  useEffect(() => {
-    if (visible) {
-      lastPosition.current = {
-        x: 0,
-        y: 0,
-      };
-
-      position.setValue({
-        x: 0,
-        y: 0,
-      });
-    }
-  }, [visible, position]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-
-      onMoveShouldSetPanResponder: () => true,
-
-      onPanResponderMove: (_, gesture) => {
-        position.setValue({
-          x: lastPosition.current.x + gesture.dx,
-          y: lastPosition.current.y + gesture.dy,
-        });
-      },
-
-      onPanResponderRelease: (_, gesture) => {
-        lastPosition.current = {
-          x: lastPosition.current.x + gesture.dx,
-          y: lastPosition.current.y + gesture.dy,
-        };
-      },
-    }),
-  ).current;
-
-  return (
-    <Modal
-      transparent
-      visible={visible}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.45)',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Animated.View
-          style={{
-            width: '82%',
-            maxWidth: 360,
-            backgroundColor: '#ffffff',
-            borderRadius: 22,
-            padding: 24,
-            transform: position.getTranslateTransform(),
-            shadowColor: '#000',
-            shadowOffset: {
-              width: 0,
-              height: 5,
-            },
-            shadowOpacity: 0.25,
-            shadowRadius: 10,
-            elevation: 12,
-          }}
-        >
-          <View
-            {...panResponder.panHandlers}
-            style={{
-              alignItems: 'center',
-              paddingBottom: 10,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 13,
-                color: '#9CA3AF',
-                marginBottom: 15,
-              }}
-            >
-              ↕ Drag me
-            </Text>
-
-            <View
-              style={{
-                width: 78,
-                height: 78,
-                borderRadius: 39,
-                borderWidth: 4,
-                borderColor: '#22C55E',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 20,
-              }}
-            >
-              <Text
-                style={{
-                  color: '#22C55E',
-                  fontSize: 45,
-                  fontWeight: '700',
-                }}
-              >
-                ✓
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                color: '#111827',
-                fontSize: 21,
-                fontWeight: '700',
-                textAlign: 'center',
-              }}
-            >
-              {message}
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={onClose}
-            style={{
-              backgroundColor: '#2563EB',
-              paddingVertical: 13,
-              borderRadius: 10,
-              marginTop: 20,
-              alignItems: 'center',
-            }}
-          >
-            <Text
-              style={{
-                color: '#ffffff',
-                fontSize: 16,
-                fontWeight: '700',
-              }}
-            >
-              OK
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
 export default function App() {
   const preferences = usePreferences();
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const [tasks, setTasks] = useState([]);
   const [media, setMedia] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -263,36 +68,35 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
   const [activeTab, setActiveTab] = useState('home');
-  const [selectedTask, setSelectedTask] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   const [projectDetailOpen, setProjectDetailOpen] = useState(false);
-  const [taskFormOpen, setTaskFormOpen] = useState(false);
   const [projectFormOpen, setProjectFormOpen] = useState(false);
-  const [editingTaskId, setEditingTaskId] = useState(null);
-  const [formProject, setFormProject] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [savingProject, setSavingProject] = useState(false);
   const [confirm, setConfirm] = useState(emptyConfirm);
+  const [taskOriginTab, setTaskOriginTab] = useState(null);
 
-  const [successModal, setSuccessModal] = useState({
-    visible: false,
-    message: '',
-  });
+  const { successNotification, showSuccess, closeSuccess } =
+    useNotificationNavigation({ activeTab, setActiveTab });
+  const {
+    tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
+    formProject, savingTask, resetTasks, openTaskForm, closeTaskForm, saveTask,
+    toggleTask, toggleSubtask, removeTask, removeTaskImage,
+  } = useTasks({ token, ask, showError, showSuccess, setMedia });
+  const feedItems = useFeedItems({ tasks, media, search, filter });
 
-  useEffect(() => {
-    restoreSession();
-  }, []);
+  useEffect(() => { restoreSession(); }, []);
   useEffect(() => {
     if (token) loadWorkspace(token);
     else resetWorkspace();
-    // Workspace reloads only when the authenticated session changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
-
   useEffect(() => {
     if (preferences.ready) {
-      showDueTaskReminder(tasks, preferences.notifications);
+      showDueTaskReminder(tasks, preferences.notifications).catch(error =>
+        console.warn('Could not show task reminder:', error),
+      );
     }
-  }, [tasks, preferences.notifications, preferences.ready]);
+  }, [preferences.notifications, preferences.ready, tasks]);
 
   async function restoreSession() {
     try {
@@ -307,40 +111,35 @@ export default function App() {
   }
 
   function resetWorkspace() {
-    setTasks([]);
+    resetTasks();
     setMedia([]);
     setProjects([]);
-    setSelectedTask(null);
     setSelectedProject(null);
+    setProjectDetailOpen(false);
     setActiveTab('home');
   }
   function showError(title, error) {
-    Dialog.show({
-      type: ALERT_TYPE.DANGER,
-      title,
-      textBody: error.message,
-      button: 'OK',
-    });
-  }
-
-  function showSuccess(message) {
-    setSuccessModal({
-      visible: true,
-      message,
-    });
-  }
-
-  function closeSuccess() {
-    setSuccessModal({
-      visible: false,
-      message: '',
-    });
+    Dialog.show({ type: ALERT_TYPE.DANGER, title, textBody: error.message, button: 'OK' });
   }
   function ask(config) {
     setConfirm({ ...emptyConfirm, ...config, visible: true });
   }
   function closeConfirm() {
     setConfirm(current => ({ ...current, visible: false, onConfirm: null }));
+  }
+  function openTaskDetail(task) {
+    setTaskOriginTab(activeTab);
+    setSelectedTask(task);
+  }
+  function handleSuccessOk() {
+    const host = closeSuccess();
+    if (host === 'taskDetail') {
+      setSelectedTask(null);
+      if (taskOriginTab) {
+        setActiveTab(taskOriginTab);
+      }
+      setTaskOriginTab(null);
+    }
   }
 
   async function loadWorkspace(authToken = token) {
@@ -362,7 +161,6 @@ export default function App() {
       setLoading(false);
     }
   }
-
   async function refresh() {
     setRefreshing(true);
     await loadWorkspace();
@@ -372,10 +170,7 @@ export default function App() {
     Keyboard.dismiss();
     setAuthLoading(true);
     try {
-      const data = await loginUser(
-        credentials.identifier,
-        credentials.password,
-      );
+      const data = await loginUser(credentials.identifier, credentials.password);
       setToken(data.token);
       setUser(data.user);
       await saveSession(data.token, data.user);
@@ -407,312 +202,27 @@ export default function App() {
       },
     });
   }
-
-  const feedItems = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const todayKey = localDateKey(new Date());
-    const taskItems = tasks
-      .filter(task => {
-        const matchesSearch =
-          !query ||
-          task.title?.toLowerCase().includes(query) ||
-          task.description?.toLowerCase().includes(query);
-        const dueKey = localDateKey(task.dueDate);
-        const matchesFilter =
-          filter === 'All' ||
-          (filter === 'Today' &&
-            dueKey === todayKey &&
-            !task.completed) ||
-          (filter === 'Upcoming' &&
-            dueKey &&
-            dueKey > todayKey &&
-            !task.completed) ||
-          (filter === 'Completed' && task.completed);
-        return matchesSearch && matchesFilter;
-      })
-      .map(task => ({
-        ...task,
-        feedType: 'task',
-        feedDate: task.createdAt || task.updatedAt,
-      }));
-    const taskImageUrls = new Set(
-      tasks.flatMap(task =>
-        task.imageUrls?.length
-          ? task.imageUrls
-          : task.imageUrl
-            ? [task.imageUrl]
-            : [],
-      ),
-    );
-    const standaloneMedia = media.filter(
-      item =>
-        filter === 'All' &&
-        item.kind !== 'taskAttachment' &&
-        !taskImageUrls.has(item.imageUrl) &&
-        (!query || item.title?.toLowerCase().includes(query)),
-    );
-    // Group images that were uploaded together (same batchId) into a single
-    // feed card, so "3 photos picked at once" show as one card with all 3
-    // images and one caption, instead of 3 separate duplicate cards.
-    const batched = new Map();
-    const singles = [];
-    standaloneMedia.forEach(item => {
-      if (item.batchId) {
-        if (!batched.has(item.batchId)) batched.set(item.batchId, []);
-        batched.get(item.batchId).push(item);
-      } else {
-        singles.push(item);
-      }
-    });
-    const mediaItems = [
-      ...Array.from(batched.values()).map(group => {
-        const sorted = [...group].sort(
-          (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
-        );
-        const first = sorted[0];
-        return {
-          ...first,
-          _id: first.batchId,
-          mediaIds: sorted.map(entry => entry._id),
-          imageUrls: sorted.map(entry => entry.imageUrl).filter(Boolean),
-          feedType: 'media',
-          feedDate: first.createdAt,
-        };
-      }),
-      ...singles.map(item => ({
-        ...item,
-        imageUrls: item.imageUrl ? [item.imageUrl] : [],
-        feedType: 'media',
-        feedDate: item.createdAt,
-      })),
-    ];
-    return [...taskItems, ...mediaItems].sort(
-      (a, b) => new Date(b.feedDate) - new Date(a.feedDate),
-    );
-  }, [tasks, media, search, filter]);
-
-  function openTaskForm(task = null, project = null) {
-    setEditingTaskId(task?._id || null);
-    setFormProject(project);
-    setTaskFormOpen(true);
-  }
-  function closeTaskForm() {
-    setTaskFormOpen(false);
-    setEditingTaskId(null);
-    setFormProject(null);
-  }
-  function replaceTask(updated) {
-    setTasks(items =>
-      items.map(item => (item._id === updated._id ? updated : item)),
-    );
-    setSelectedTask(updated);
-  }
-  async function saveTask(form) {
-    setSaving(true);
-
-    const isEditing = Boolean(editingTaskId);
-
-    try {
-      const batchId = generateBatchId();
-
-      const uploaded = await Promise.all(
-        form.newImages.map(image =>
-          uploadMedia(
-            image,
-            form.title,
-            token,
-            'taskAttachment',
-            batchId,
-          ),
-        ),
-      );
-
-      const imageUrls = [
-        ...form.imageUrls,
-        ...uploaded.map(item => item.imageUrl).filter(Boolean),
-      ];
-
-      const payload = {
-        ...form,
-        imageUrls,
-        imageUrl: imageUrls[0] || '',
-      };
-
-      delete payload.newImages;
-
-      const saved = isEditing
-        ? await updateTask(editingTaskId, payload, token)
-        : await createTask(payload, token);
-
-      if (isEditing) {
-        replaceTask(saved);
-
-        showSuccess('Task has been edited');
-      } else {
-        setTasks(items => [saved, ...items]);
-
-        showSuccess('Task has been created');
-      }
-
-      closeTaskForm();
-    } catch (error) {
-      showError('Could not save task', error);
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function toggleTask(task) {
-    try {
-      const isCompleting = !task.completed;
-
-      const updated = await updateTask(
-        task._id,
-        {
-          completed: !task.completed,
-        },
-        token,
-      );
-
-      replaceTask(updated);
-
-      if (isCompleting) {
-        showSuccess('Task has been completed');
-      }
-    } catch (error) {
-      showError('Could not update task', error);
-    }
-  }
-  async function toggleSubtask(firstArg, secondArg) {
-    try {
-      let task = selectedTask;
-      let subtask = firstArg;
-
-      // Supports either onToggleSubtask(subtask)
-      // or onToggleSubtask(task, subtask).
-      if (
-        firstArg &&
-        typeof firstArg === 'object' &&
-        (firstArg._id || firstArg.id) &&
-        Array.isArray(firstArg.subtasks) &&
-        secondArg !== undefined
-      ) {
-        task = firstArg;
-        subtask = secondArg;
-      }
-
-      if (!task?._id) return;
-
-      const subtaskId =
-        typeof subtask === 'object'
-          ? subtask?._id || subtask?.id
-          : subtask;
-
-      if (!subtaskId) return;
-
-      const updatedSubtasks = (task.subtasks || []).map(item => {
-        const itemId = item?._id || item?.id;
-
-        if (itemId !== subtaskId) return item;
-
-        return {
-          ...item,
-          completed: !item.completed,
-        };
-      });
-
-      const updated = await updateTask(
-        task._id,
-        { subtasks: updatedSubtasks },
-        token,
-      );
-
-      replaceTask(updated);
-    } catch (error) {
-      showError('Could not update subtask', error);
-    }
-  }
-
-  function removeTask(id) {
-    ask({
-      title: 'Delete Task',
-      message: 'Are you sure you want to delete this task?',
-      confirmText: 'Delete',
-      isDestructive: true,
-      onConfirm: async () => {
-        try {
-          await deleteTask(id, token);
-          setTasks(items => items.filter(item => item._id !== id));
-          setSelectedTask(null);
-          showSuccess('Task has been deleted');
-        } catch (error) {
-          showError('Could not delete task', error);
-        }
-      },
-    });
-  }
   function removeMedia(item) {
-    const idsToDelete = item.mediaIds?.length ? item.mediaIds : [item._id];
+    const ids = item.mediaIds?.length ? item.mediaIds : [item._id];
     ask({
       title: 'Delete Media',
-      message:
-        idsToDelete.length > 1
-          ? `Permanently delete these ${idsToDelete.length} uploaded images?`
-          : 'Permanently delete this uploaded image?',
+      message: ids.length > 1
+        ? `Permanently delete these ${ids.length} uploaded images?`
+        : 'Permanently delete this uploaded image?',
       confirmText: 'Delete',
       isDestructive: true,
       onConfirm: async () => {
         try {
-          await Promise.all(idsToDelete.map(id => deleteMedia(id, token)));
-          setMedia(items =>
-            items.filter(value => !idsToDelete.includes(value._id)),
-          );
+          await Promise.all(ids.map(id => deleteMedia(id, token)));
+          setMedia(items => items.filter(value => !ids.includes(value._id)));
         } catch (error) {
           showError('Could not delete media', error);
         }
       },
     });
   }
-  async function removeTaskImage(imageUrl) {
-    try {
-      await deleteMediaByUrl(imageUrl, token);
-      setMedia(items => items.filter(item => item.imageUrl !== imageUrl));
-      setTasks(items =>
-        items.map(task => {
-          const imageUrls = (task.imageUrls || []).filter(
-            url => url !== imageUrl,
-          );
-          return {
-            ...task,
-            imageUrls,
-            imageUrl:
-              task.imageUrl === imageUrl
-                ? imageUrls[0] || ''
-                : task.imageUrl,
-          };
-        }),
-      );
-      setSelectedTask(current => {
-        if (!current) return current;
-        const imageUrls = (current.imageUrls || []).filter(
-          url => url !== imageUrl,
-        );
-        return {
-          ...current,
-          imageUrls,
-          imageUrl:
-            current.imageUrl === imageUrl
-              ? imageUrls[0] || ''
-              : current.imageUrl,
-        };
-      });
-      return true;
-    } catch (error) {
-      showError('Could not delete image', error);
-      return false;
-    }
-  }
   async function saveProject(form) {
-    setSaving(true);
+    setSavingProject(true);
     try {
       const project = await createProject(form, token);
       setProjects(items => [project, ...items]);
@@ -720,66 +230,40 @@ export default function App() {
     } catch (error) {
       showError('Could not save project', error);
     } finally {
-      setSaving(false);
+      setSavingProject(false);
     }
   }
 
-  if (!token)
+  if (!token) {
     return (
       <AlertNotificationRoot theme={preferences.theme}>
         <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
-          <LoginScreen
-            onLogin={login}
-            onRegister={register}
-            isLoading={authLoading}
-          />
+          <LoginScreen onLogin={login} onRegister={register} isLoading={authLoading} />
           <ConfirmDialog config={confirm} onCancel={closeConfirm} />
-
-
-          <DraggableSuccessModal
-            visible={successModal.visible}
-            message={successModal.message}
-            onClose={closeSuccess}
-          />
         </View>
       </AlertNotificationRoot>
     );
+  }
 
-  const editingTask = editingTaskId
-    ? tasks.find(task => task._id === editingTaskId)
-    : null;
   return (
     <AlertNotificationRoot theme={preferences.theme}>
-      <SafeAreaView
-        className="flex-1 bg-canvas"
-        style={appThemes[preferences.theme]}
-      >
+      <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
+        <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
         <StatusBar
-          barStyle={
-            preferences.theme === 'dark' ? 'light-content' : 'dark-content'
-          }
+          barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'}
           backgroundColor={preferences.theme === 'dark' ? '#12111a' : '#ffffff'}
         />
         {activeTab === 'home' ? (
           <HomeScreen
-            user={user}
-            tasks={tasks}
-            items={feedItems}
-            loading={loading}
-            refreshing={refreshing}
-            searchText={search}
-            onSearch={setSearch}
-            filter={filter}
-            onFilter={setFilter}
-            onRefresh={refresh}
-            onTask={setSelectedTask}
-            onDeleteMedia={removeMedia}
+            user={user} tasks={tasks} items={feedItems} loading={loading}
+            refreshing={refreshing} searchText={search} onSearch={setSearch}
+            filter={filter} onFilter={setFilter} onRefresh={refresh}
+            onTask={openTaskDetail} onDeleteMedia={removeMedia}
             onAddTask={() => openTaskForm()}
           />
         ) : activeTab === 'projects' ? (
           <ProjectsScreen
-            projects={projects}
-            tasks={tasks}
+            projects={projects} tasks={tasks}
             onAdd={() => setProjectFormOpen(true)}
             onOpen={project => {
               setSelectedProject(project);
@@ -788,61 +272,52 @@ export default function App() {
           />
         ) : (
           <ProfileScreen
-            user={user}
-            tasks={tasks}
-            projects={projects}
-            onLogout={logout}
-            theme={preferences.theme}
-            notifications={preferences.notifications}
+            user={user} tasks={tasks} projects={projects} onLogout={logout}
+            theme={preferences.theme} notifications={preferences.notifications}
             onToggleTheme={preferences.toggleTheme}
             onToggleNotifications={preferences.toggleNotifications}
           />
         )}
-        <BottomNav
-          active={activeTab}
-          onChange={setActiveTab}
-        />
+        <BottomNav active={activeTab} onChange={setActiveTab} />
         <ProjectDetailModal
-          visible={projectDetailOpen}
-          project={selectedProject}
-          tasks={tasks}
-          onClose={() => setProjectDetailOpen(false)}
-          onTask={setSelectedTask}
+          visible={projectDetailOpen} project={selectedProject} tasks={tasks}
+          onClose={() => setProjectDetailOpen(false)} onTask={openTaskDetail}
           onAddTask={project => openTaskForm(null, project)}
         />
         <TaskDetailModal
-          visible={!!selectedTask && !taskFormOpen}
-          task={selectedTask}
-          onClose={() => setSelectedTask(null)}
+          visible={!!selectedTask && !taskFormOpen} task={selectedTask}
+          onClose={() => {
+            setSelectedTask(null);
+            if (taskOriginTab) setActiveTab(taskOriginTab);
+            setTaskOriginTab(null);
+          }}
           onToggle={toggleTask}
-          onEdit={task => openTaskForm(task)}
-          onDelete={removeTask}
+          onEdit={task => openTaskForm(task)} onDelete={removeTask}
           onToggleSubtask={toggleSubtask}
+          successNotification={
+            successNotification.host === 'taskDetail' ? successNotification : null
+          }
+          onSuccessOk={handleSuccessOk}
         />
         <TaskFormModal
-          visible={taskFormOpen}
-          task={editingTask}
-          project={formProject}
-          projects={projects}
-          saving={saving}
-          onClose={closeTaskForm}
-          onSave={saveTask}
-          onDeleteImage={removeTaskImage}
+          visible={taskFormOpen} task={editingTask} project={formProject}
+          projects={projects} saving={savingTask} onClose={closeTaskForm}
+          onSave={saveTask} onDeleteImage={removeTaskImage}
         />
         <ProjectFormModal
-          visible={projectFormOpen}
-          saving={saving}
-          onClose={() => setProjectFormOpen(false)}
-          onSave={saveProject}
+          visible={projectFormOpen} saving={savingProject}
+          onClose={() => setProjectFormOpen(false)} onSave={saveProject}
         />
         <ConfirmDialog config={confirm} onCancel={closeConfirm} />
-
-        <DraggableSuccessModal
-          visible={successModal.visible}
-          message={successModal.message}
-          onClose={closeSuccess}
-        />
-      </SafeAreaView>
+        </SafeAreaView>
+        {successNotification.host === 'screen' && (
+          <DraggableSuccessModal
+            visible={successNotification.visible}
+            message={successNotification.message}
+            onClose={handleSuccessOk}
+          />
+        )}
+      </View>
     </AlertNotificationRoot>
   );
 }

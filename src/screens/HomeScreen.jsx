@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import formatTimestamp from '../utils/formatTimestamp';
+import { wrap } from '../utils/wrap';
 
 const filters = ['All', 'Today', 'Upcoming', 'Completed'];
 const statThemes = [
@@ -43,12 +44,130 @@ function EmptyFeed() {
   );
 }
 
+// ---------- Animated Image Cycler (STABLE VERSION) ----------
+function AnimatedImageCycler({ images = [], height = 96, width = 128, rounded = 16 }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!images || images.length <= 1) {
+      fadeAnim.setValue(1);
+      scaleAnim.setValue(1);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 0.3,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setCurrentIndex(prev => wrap(images, prev + 1));
+
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 350,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(scaleAnim, {
+              toValue: 0.96,
+              duration: 150,
+              useNativeDriver: true,
+            }),
+            Animated.spring(scaleAnim, {
+              toValue: 1,
+              friction: 6,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]).start();
+      });
+    }, 3200);
+
+    return () => clearInterval(interval);
+  }, [images.length]);
+
+  if (!images || images.length === 0) return null;
+
+  const safeIndex = ((currentIndex % images.length) + images.length) % images.length;
+  const currentUri = images[safeIndex];
+
+  const containerStyle = {
+    height: typeof height === 'number' ? height : 220,
+    borderRadius: rounded,
+    overflow: 'hidden',
+    backgroundColor: '#f1f5f9',
+  };
+
+  if (typeof width === 'number') {
+    containerStyle.width = width;
+  } else {
+    containerStyle.width = '100%';
+  }
+
+  return (
+    <View style={containerStyle}>
+      <Animated.View
+        style={{
+          flex: 1,
+          opacity: fadeAnim,
+          transform: [{ scale: scaleAnim }],
+        }}
+      >
+        {currentUri ? (
+          <Image
+            source={{ uri: currentUri }}
+            style={{ width: '100%', height: '100%' }}
+            resizeMode="cover"
+            onError={(e) => {
+              console.log('Image load error:', currentUri, e.nativeEvent?.error);
+            }}
+          />
+        ) : (
+          <View style={{ flex: 1, backgroundColor: '#e2e8f0' }} />
+        )}
+      </Animated.View>
+
+      {images.length > 1 && (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            left: 0,
+            right: 0,
+            flexDirection: 'row',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          {images.map((_, i) => (
+            <View
+              key={i}
+              style={{
+                width: i === safeIndex ? 16 : 6,
+                height: 6,
+                borderRadius: 3,
+                marginHorizontal: 3,
+                backgroundColor: i === safeIndex ? '#ffffff' : 'rgba(255,255,255,0.55)',
+              }}
+            />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function TaskCard({ item, onPress }) {
   const images = item.imageUrls?.length
     ? item.imageUrls
     : item.imageUrl
       ? [item.imageUrl]
       : [];
+
   return (
     <TouchableOpacity
       className="mb-4 overflow-hidden rounded-3xl border border-line bg-canvas p-4"
@@ -78,21 +197,18 @@ function TaskCard({ item, onPress }) {
           ) : null}
         </View>
       </View>
-      {images.length ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="mt-4"
-        >
-          {images.map((uri, index) => (
-            <Image
-              key={uri + index}
-              source={{ uri }}
-              className="mr-2 h-24 w-32 rounded-2xl"
-            />
-          ))}
-        </ScrollView>
-      ) : null}
+
+      {images.length > 0 && (
+        <View className="mt-4">
+          <AnimatedImageCycler
+            images={images}
+            height={110}
+            width={160}
+            rounded={18}
+          />
+        </View>
+      )}
+
       <View className="mt-4 flex-row items-center justify-between">
         <Text className="text-xs font-semibold text-muted">
           {formatTimestamp(item.feedDate)}
@@ -111,30 +227,25 @@ function MediaCard({ item, onDelete }) {
     : item.imageUrl
       ? [item.imageUrl]
       : [];
+
   return (
     <View className="mb-4 overflow-hidden rounded-3xl border border-line bg-canvas p-4">
-      {images.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {images.map((uri, index) => (
-            <Image
-              key={uri + index}
-              source={{ uri }}
-              className="mr-2 h-52 w-52 rounded-2xl"
-              resizeMode="cover"
-            />
-          ))}
-        </ScrollView>
-      ) : images.length === 1 ? (
-        <Image
-          source={{ uri: images[0] }}
-          className="h-52 w-full rounded-2xl"
-          resizeMode="cover"
-        />
-      ) : null}
+      {images.length > 0 && (
+        <View style={{ width: '100%' }}>
+          <AnimatedImageCycler
+            images={images}
+            height={220}
+            width="100%"
+            rounded={18}
+          />
+        </View>
+      )}
+
       <Text className="mt-3 text-base font-extrabold text-ink">
         {item.title || 'Uploaded image'}
         {images.length > 1 ? ` · ${images.length} photos` : ''}
       </Text>
+
       <View className="mt-3 flex-row items-center justify-between">
         <Text className="text-xs font-semibold text-muted">
           {formatTimestamp(item.feedDate)}
@@ -179,7 +290,6 @@ export default function HomeScreen({
   const fullGreeting = getGreeting();
 
   useEffect(() => {
-    // Initial Page Animation
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -210,25 +320,20 @@ export default function HomeScreen({
         setDisplayedGreeting(fullGreeting.slice(0, currentIndex + 1));
         currentIndex++;
 
-        // Jab poora type ho jaye
         if (currentIndex === fullGreeting.length) {
           clearInterval(typingTimer);
 
-          // 2 seconds rukna
           timeout1 = setTimeout(() => {
             if (!isMounted) return;
 
-            // 1. Pehle text ko smoothly fade out karna
             Animated.timing(greetingOpacity, {
               toValue: 0,
               duration: 800,
               useNativeDriver: true,
             }).start(({ finished }) => {
               if (finished && isMounted) {
-                // 2. Fade out hone ke baad text ko clear karna (kyunke ab text chupa hua hai)
                 setDisplayedGreeting('');
 
-                // 3. Thora ruk kar opacity wapas 1 karna aur loop dobara chalana taake blink na ho
                 timeout2 = setTimeout(() => {
                   greetingOpacity.setValue(1);
                   startTypingSequence();
@@ -237,10 +342,9 @@ export default function HomeScreen({
             });
           }, 2000);
         }
-      }, 100); // 100ms ki typing speed
+      }, 100);
     };
 
-    // Pehli dafa sequence shuru karna
     startTypingSequence();
 
     return () => {
@@ -262,7 +366,6 @@ export default function HomeScreen({
             flex: 1,
           }}
         >
-          {/* minHeight lagaya gaya hai taake text khali hone par layout jump na kare */}
           <Animated.Text
             style={{ opacity: greetingOpacity, minHeight: 24 }}
             className="text-base font-semibold text-muted"
@@ -279,6 +382,7 @@ export default function HomeScreen({
           </Text>
         </View>
       </View>
+
       <View className="mb-4 flex-row px-4">
         {stats.map(([value, label], index) => (
           <View
@@ -294,6 +398,7 @@ export default function HomeScreen({
           </View>
         ))}
       </View>
+
       <View className="mx-4 mb-3 h-14 flex-row items-center rounded-2xl border border-line bg-canvas px-4">
         <Text className="mr-2 text-2xl text-muted">⌕</Text>
         <TextInput
@@ -304,6 +409,7 @@ export default function HomeScreen({
           placeholderTextColor="#817C94"
         />
       </View>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -328,6 +434,7 @@ export default function HomeScreen({
           </TouchableOpacity>
         ))}
       </ScrollView>
+
       <View className="flex-1 px-4">
         {loading ? (
           <ActivityIndicator size="large" color={P} className="mt-12" />
@@ -350,6 +457,7 @@ export default function HomeScreen({
           />
         )}
       </View>
+
       <TouchableOpacity
         className="absolute h-[58px] w-[58px] items-center justify-center rounded-full bg-brand shadow-lg z-20"
         style={{ right: 20, bottom: 20 }}
