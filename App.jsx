@@ -6,6 +6,8 @@ import {
   Platform,
   SafeAreaView,
   StatusBar,
+  Text,
+  TouchableOpacity,
   UIManager,
   View,
 } from 'react-native';
@@ -491,8 +493,14 @@ export default function App() {
         <BottomNav
           active={activeTab}
           onChange={setActiveTab}
-          onAdd={() => openTaskForm()}
         />
+        <TouchableOpacity
+          className="absolute h-[58px] w-[58px] items-center justify-center rounded-full bg-brand shadow-lg z-20"
+          style={{ right: 20, bottom: 76 }}
+          onPress={() => openTaskForm()}
+        >
+          <Text className="text-3xl font-light text-white">＋</Text>
+        </TouchableOpacity>
         <ProjectDetailModal
           visible={projectDetailOpen}
           project={selectedProject}

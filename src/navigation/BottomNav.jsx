@@ -6,7 +6,7 @@ const tabs = [
   ['projects', '▦', 'Projects'],
   ['profile', '○', 'Profile'],
 ];
-export default function BottomNav({ active, onChange, onAdd }) {
+export default function BottomNav({ active, onChange }) {
   const tab = ([key, icon, label]) => (
     <TouchableOpacity
       key={key}
@@ -14,16 +14,14 @@ export default function BottomNav({ active, onChange, onAdd }) {
       onPress={() => onChange(key)}
     >
       <Text
-        className={`text-2xl ${
-          active === key ? 'text-brand' : 'text-[#aaa5b5]'
-        }`}
+        className={`text-2xl ${active === key ? 'text-brand' : 'text-[#aaa5b5]'
+          }`}
       >
         {icon}
       </Text>
       <Text
-        className={`text-[10px] font-semibold ${
-          active === key ? 'text-brand' : 'text-[#aaa5b5]'
-        }`}
+        className={`text-[10px] font-semibold ${active === key ? 'text-brand' : 'text-[#aaa5b5]'
+          }`}
       >
         {label}
       </Text>
@@ -35,12 +33,6 @@ export default function BottomNav({ active, onChange, onAdd }) {
       {tab(tabs[1])}
       <View className="w-16" />
       {tab(tabs[2])}
-      <TouchableOpacity
-        className="absolute bottom-3 left-1/2 -ml-[29px] h-[58px] w-[58px] items-center justify-center rounded-[20px] bg-brand shadow-lg"
-        onPress={onAdd}
-      >
-        <Text className="text-3xl font-light text-white">＋</Text>
-      </TouchableOpacity>
     </View>
   );
 }

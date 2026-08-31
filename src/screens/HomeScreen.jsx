@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   ScrollView,
@@ -17,6 +18,14 @@ const statThemes = [
   ['bg-[#e2f7f3]', 'text-[#168b7b]'],
   ['bg-[#fff0e5]', 'text-[#bd4a13]'],
 ];
+const P = '#1d1d1fff';
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 function EmptyFeed() {
   return (
@@ -160,18 +169,110 @@ export default function HomeScreen({
     [tasks.filter(t => !t.completed).length, 'Open'],
     [tasks.filter(t => t.completed).length, 'Done'],
   ];
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(-16)).current;
+
+  const greetingOpacity = useRef(new Animated.Value(1)).current;
+  const [displayedGreeting, setDisplayedGreeting] = useState('');
+  const fullGreeting = getGreeting();
+
+  useEffect(() => {
+    // Initial Page Animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    let typingTimer;
+    let timeout1;
+    let timeout2;
+    let isMounted = true;
+
+    const startTypingSequence = () => {
+      let currentIndex = 0;
+
+      typingTimer = setInterval(() => {
+        if (!isMounted) {
+          clearInterval(typingTimer);
+          return;
+        }
+
+        setDisplayedGreeting(fullGreeting.slice(0, currentIndex + 1));
+        currentIndex++;
+
+        // Jab poora type ho jaye
+        if (currentIndex === fullGreeting.length) {
+          clearInterval(typingTimer);
+
+          // 2 seconds rukna
+          timeout1 = setTimeout(() => {
+            if (!isMounted) return;
+
+            // 1. Pehle text ko smoothly fade out karna
+            Animated.timing(greetingOpacity, {
+              toValue: 0,
+              duration: 800,
+              useNativeDriver: true,
+            }).start(({ finished }) => {
+              if (finished && isMounted) {
+                // 2. Fade out hone ke baad text ko clear karna (kyunke ab text chupa hua hai)
+                setDisplayedGreeting('');
+
+                // 3. Thora ruk kar opacity wapas 1 karna aur loop dobara chalana taake blink na ho
+                timeout2 = setTimeout(() => {
+                  greetingOpacity.setValue(1);
+                  startTypingSequence();
+                }, 150);
+              }
+            });
+          }, 2000);
+        }
+      }, 100); // 100ms ki typing speed
+    };
+
+    // Pehli dafa sequence shuru karna
+    startTypingSequence();
+
+    return () => {
+      isMounted = false;
+      clearInterval(typingTimer);
+      clearTimeout(timeout1);
+      clearTimeout(timeout2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <View className="flex-1 bg-canvas">
       <View className="flex-row items-center justify-between px-5 pb-3 pt-5">
-        <View>
-          <Text className="text-base font-semibold text-muted">
-            Good morning
-          </Text>
+        <Animated.View
+          style={{
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+            flex: 1,
+          }}
+        >
+          {/* minHeight lagaya gaya hai taake text khali hone par layout jump na kare */}
+          <Animated.Text
+            style={{ opacity: greetingOpacity, minHeight: 24 }}
+            className="text-base font-semibold text-muted"
+          >
+            {displayedGreeting}
+          </Animated.Text>
           <Text className="mt-1 text-4xl font-extrabold tracking-tight text-ink">
             My Tasks
           </Text>
-        </View>
-        <View className="h-14 w-14 items-center justify-center rounded-3xl bg-brand">
+        </Animated.View>
+        <View className="h-14 w-14 items-center justify-center rounded-3xl bg-brand ml-2">
           <Text className="text-lg font-extrabold text-white">
             {(user?.name || user?.phoneNumber || 'U').charAt(0).toUpperCase()}
           </Text>
@@ -251,5 +352,3 @@ export default function HomeScreen({
     </View>
   );
 }
-
-const P = '#1d1d1fff';

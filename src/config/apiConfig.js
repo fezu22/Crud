@@ -1,6 +1,6 @@
 import { NativeModules } from 'react-native';
 
-const FALLBACK_API_HOST = '192.168.1.9';
+const FALLBACK_API_HOST = '192.168.1.8';
 
 function getMetroHost() {
   const scriptUrl = NativeModules.SourceCode?.scriptURL;
