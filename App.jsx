@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './global.css';
 import {
   Keyboard,
@@ -14,6 +14,7 @@ import {
   ALERT_TYPE,
   Dialog,
 } from 'react-native-alert-notification';
+
 import DraggableSuccessModal from './src/components/DraggableSuccessModal';
 import ConfirmDialog from './src/components/ConfirmDialog';
 import BottomNav from './src/navigation/BottomNav';
@@ -26,11 +27,14 @@ import ProjectFormModal from './src/screens/projects/ProjectFormModal';
 import TaskDetailModal from './src/screens/tasks/TaskDetailModal';
 import TaskFormModal from './src/screens/tasks/TaskFormModal';
 import useFeedItems from './src/hooks/useFeedItems';
-import useNotificationNavigation from './src/hooks/useNotificationNavigation';
 import usePreferences from './src/hooks/usePreferences';
 import useTasks from './src/hooks/useTasks';
 import { appThemes } from './src/theme/appTheme';
-import { showDueTaskReminder } from './src/services/notifications';
+import {
+  cancelTaskReminders,
+  scheduleTaskReminders,
+  showDueTaskReminder,
+} from './src/services/notifications';
 import {
   createProject,
   deleteMedia,
@@ -74,17 +78,55 @@ export default function App() {
   const [savingProject, setSavingProject] = useState(false);
   const [confirm, setConfirm] = useState(emptyConfirm);
   const [taskOriginTab, setTaskOriginTab] = useState(null);
-
-  const { successNotification, showSuccess, closeSuccess } =
-    useNotificationNavigation({ activeTab, setActiveTab });
+  const [successModal, setSuccessModal] = useState({
+    visible: false,
+    message: '',
+    host: 'screen',
+  });
+  const successTimeoutRef = useRef(null);
   const {
     tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
     formProject, savingTask, resetTasks, openTaskForm, closeTaskForm, saveTask,
     toggleTask, toggleSubtask, removeTask, removeTaskImage,
-  } = useTasks({ token, ask, showError, showSuccess, setMedia });
+  } = useTasks({
+    token,
+    ask,
+    showError,
+    showSuccess,
+    setMedia,
+    onTaskSaved: scheduleTaskReminders,
+    onTaskCompleted: cancelTaskReminders,
+    onTaskDeleted: cancelTaskReminders,
+  });
   const feedItems = useFeedItems({ tasks, media, search, filter });
 
+  function showSuccess(message, host = 'screen') {
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+    }
+    const resolvedHost =
+      host === 'taskDetail' && !selectedTask ? 'screen' : host;
+    setSuccessModal({ visible: true, message, host: resolvedHost });
+    successTimeoutRef.current = setTimeout(() => {
+      setSuccessModal({ visible: false, message: '', host: 'screen' });
+      successTimeoutRef.current = null;
+    }, 2500);
+  }
+
+  function closeSuccess() {
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
+    const host = successModal.host;
+    setSuccessModal({ visible: false, message: '', host: 'screen' });
+    return host;
+  }
+
   useEffect(() => { restoreSession(); }, []);
+  useEffect(() => () => {
+    if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+  }, []);
   useEffect(() => {
     if (token) loadWorkspace(token);
     else resetWorkspace();
@@ -249,71 +291,71 @@ export default function App() {
     <AlertNotificationRoot theme={preferences.theme}>
       <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
         <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
-        <StatusBar
-          barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'}
-          backgroundColor={preferences.theme === 'dark' ? '#12111a' : '#ffffff'}
-        />
-        {activeTab === 'home' ? (
-          <HomeScreen
-            user={user} tasks={tasks} items={feedItems} loading={loading}
-            refreshing={refreshing} searchText={search} onSearch={setSearch}
-            filter={filter} onFilter={setFilter} onRefresh={refresh}
-            onTask={openTaskDetail} onDeleteMedia={removeMedia}
-            onAddTask={() => openTaskForm()}
+          <StatusBar
+            barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'}
+            backgroundColor={preferences.theme === 'dark' ? '#12111a' : '#ffffff'}
           />
-        ) : activeTab === 'projects' ? (
-          <ProjectsScreen
-            projects={projects} tasks={tasks}
-            onAdd={() => setProjectFormOpen(true)}
-            onOpen={project => {
-              setSelectedProject(project);
-              setProjectDetailOpen(true);
+          {activeTab === 'home' ? (
+            <HomeScreen
+              user={user} tasks={tasks} items={feedItems} loading={loading}
+              refreshing={refreshing} searchText={search} onSearch={setSearch}
+              filter={filter} onFilter={setFilter} onRefresh={refresh}
+              onTask={openTaskDetail} onDeleteMedia={removeMedia}
+              onAddTask={() => openTaskForm()}
+            />
+          ) : activeTab === 'projects' ? (
+            <ProjectsScreen
+              projects={projects} tasks={tasks}
+              onAdd={() => setProjectFormOpen(true)}
+              onOpen={project => {
+                setSelectedProject(project);
+                setProjectDetailOpen(true);
+              }}
+            />
+          ) : (
+            <ProfileScreen
+              user={user} tasks={tasks} projects={projects} onLogout={logout}
+              theme={preferences.theme} notifications={preferences.notifications}
+              onToggleTheme={preferences.toggleTheme}
+              onToggleNotifications={preferences.toggleNotifications}
+            />
+          )}
+          <BottomNav active={activeTab} onChange={setActiveTab} />
+          <ProjectDetailModal
+            visible={projectDetailOpen} project={selectedProject} tasks={tasks}
+            onClose={() => setProjectDetailOpen(false)} onTask={openTaskDetail}
+            onAddTask={project => openTaskForm(null, project)}
+          />
+          <TaskDetailModal
+            visible={!!selectedTask && !taskFormOpen} task={selectedTask}
+            onClose={() => {
+              setSelectedTask(null);
+              if (taskOriginTab) setActiveTab(taskOriginTab);
+              setTaskOriginTab(null);
             }}
+            onToggle={toggleTask}
+            onEdit={task => openTaskForm(task)} onDelete={removeTask}
+            onToggleSubtask={toggleSubtask}
+            successNotification={
+              successModal.host === 'taskDetail' ? successModal : null
+            }
+            onSuccessOk={handleSuccessOk}
           />
-        ) : (
-          <ProfileScreen
-            user={user} tasks={tasks} projects={projects} onLogout={logout}
-            theme={preferences.theme} notifications={preferences.notifications}
-            onToggleTheme={preferences.toggleTheme}
-            onToggleNotifications={preferences.toggleNotifications}
+          <TaskFormModal
+            visible={taskFormOpen} task={editingTask} project={formProject}
+            projects={projects} saving={savingTask} onClose={closeTaskForm}
+            onSave={saveTask} onDeleteImage={removeTaskImage}
           />
-        )}
-        <BottomNav active={activeTab} onChange={setActiveTab} />
-        <ProjectDetailModal
-          visible={projectDetailOpen} project={selectedProject} tasks={tasks}
-          onClose={() => setProjectDetailOpen(false)} onTask={openTaskDetail}
-          onAddTask={project => openTaskForm(null, project)}
-        />
-        <TaskDetailModal
-          visible={!!selectedTask && !taskFormOpen} task={selectedTask}
-          onClose={() => {
-            setSelectedTask(null);
-            if (taskOriginTab) setActiveTab(taskOriginTab);
-            setTaskOriginTab(null);
-          }}
-          onToggle={toggleTask}
-          onEdit={task => openTaskForm(task)} onDelete={removeTask}
-          onToggleSubtask={toggleSubtask}
-          successNotification={
-            successNotification.host === 'taskDetail' ? successNotification : null
-          }
-          onSuccessOk={handleSuccessOk}
-        />
-        <TaskFormModal
-          visible={taskFormOpen} task={editingTask} project={formProject}
-          projects={projects} saving={savingTask} onClose={closeTaskForm}
-          onSave={saveTask} onDeleteImage={removeTaskImage}
-        />
-        <ProjectFormModal
-          visible={projectFormOpen} saving={savingProject}
-          onClose={() => setProjectFormOpen(false)} onSave={saveProject}
-        />
-        <ConfirmDialog config={confirm} onCancel={closeConfirm} />
+          <ProjectFormModal
+            visible={projectFormOpen} saving={savingProject}
+            onClose={() => setProjectFormOpen(false)} onSave={saveProject}
+          />
+          <ConfirmDialog config={confirm} onCancel={closeConfirm} />
         </SafeAreaView>
-        {successNotification.host === 'screen' && (
+        {successModal.visible && successModal.host === 'screen' && (
           <DraggableSuccessModal
-            visible={successNotification.visible}
-            message={successNotification.message}
+            visible={successModal.visible}
+            message={successModal.message}
             onClose={handleSuccessOk}
           />
         )}

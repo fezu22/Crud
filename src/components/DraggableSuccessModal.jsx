@@ -10,13 +10,36 @@ import {
 
 export default function DraggableSuccessModal({ visible, message, onClose }) {
   const position = useRef(new Animated.ValueXY()).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.86)).current;
   const lastPosition = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     if (!visible) return;
     lastPosition.current = { x: 0, y: 0 };
     position.setValue({ x: 0, y: 0 });
-  }, [position, visible]);
+    opacity.setValue(0);
+    scale.setValue(0.86);
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        damping: 13,
+        stiffness: 150,
+        mass: 0.8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    const timer = setTimeout(() => {
+      onClose();
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [opacity, position, scale, visible, onClose]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -40,22 +63,30 @@ export default function DraggableSuccessModal({ visible, message, onClose }) {
 
   if (!visible) return null;
   return (
-    <View pointerEvents={'box-none'} style={styles.overlay}>
+    <Animated.View style={[styles.overlay, { opacity }]}>
       <Animated.View
-        style={[styles.card, { transform: position.getTranslateTransform() }]}
+        style={[
+          styles.card,
+          {
+            transform: [
+              ...position.getTranslateTransform(),
+              { scale },
+            ],
+          },
+        ]}
       >
         <View {...panResponder.panHandlers} style={styles.dragArea}>
-
           <View style={styles.checkCircle}>
             <Text style={styles.check}>{'\u2713'}</Text>
           </View>
           <Text style={styles.message}>{message}</Text>
+          <Text style={styles.subtitle}>Keep going, you're doing great!</Text>
         </View>
         <TouchableOpacity activeOpacity={0.8} onPress={onClose} style={styles.button}>
           <Text style={styles.buttonText}>OK</Text>
         </TouchableOpacity>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -64,13 +95,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     zIndex: 1000,
     elevation: 1000,
   },
   card: {
     width: '82%',
     maxWidth: 360,
-    borderRadius: 22,
+    borderRadius: 28,
     backgroundColor: '#FFFFFF',
     padding: 24,
     shadowColor: '#000000',
@@ -80,7 +112,6 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   dragArea: { alignItems: 'center', paddingBottom: 10 },
-  dragLabel: { marginBottom: 15, color: '#9CA3AF', fontSize: 13 },
   checkCircle: {
     width: 78,
     height: 78,
@@ -98,11 +129,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  subtitle: {
+    marginTop: 8,
+    color: '#6B7280',
+    fontSize: 14,
+    textAlign: 'center',
+  },
   button: {
     marginTop: 20,
     alignItems: 'center',
-    borderRadius: 10,
-    backgroundColor: '#2563EB',
+    borderRadius: 14,
+    backgroundColor: '#7C3AED',
     paddingVertical: 13,
   },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },

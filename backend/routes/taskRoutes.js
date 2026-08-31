@@ -77,7 +77,7 @@ router.get('/:id', async (req, res) => {
 // POST - create a new task for logged-in user
 router.post('/', async (req, res) => {
   try {
-    const { title, description, imageUrl, imageUrls = [], dueDate, priority, category, projectId, subtasks } = req.body;
+    const { title, description, imageUrl, imageUrls = [], dueDate, durationMinutes, priority, category, projectId, subtasks } = req.body;
 
     if ((!title || title.trim() === '') && !imageUrl && imageUrls.length === 0) {
       return res.status(400).json({ message: 'Task text or image is required' });
@@ -90,6 +90,7 @@ router.post('/', async (req, res) => {
       imageUrl: imageUrl || '',
       imageUrls: Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : [],
       dueDate: dueDate || null,
+      durationMinutes: durationMinutes ?? 30,
       priority: priority || 'Medium',
       category: category || 'Personal',
       projectId: projectId || null,
@@ -106,7 +107,7 @@ router.post('/', async (req, res) => {
 // PUT - update an existing task (ensuring ownership)
 router.put('/:id', async (req, res) => {
   try {
-    const allowedFields = ['title', 'description', 'imageUrl', 'imageUrls', 'completed', 'dueDate', 'priority', 'category', 'projectId', 'subtasks'];
+    const allowedFields = ['title', 'description', 'imageUrl', 'imageUrls', 'completed', 'dueDate', 'durationMinutes', 'priority', 'category', 'projectId', 'subtasks'];
     const updates = Object.fromEntries(
       Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
     );

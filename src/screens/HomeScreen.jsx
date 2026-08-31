@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Dimensions,
   FlatList,
   Image,
   ScrollView,
@@ -11,7 +12,6 @@ import {
   View,
 } from 'react-native';
 import formatTimestamp from '../utils/formatTimestamp';
-import { wrap } from '../utils/wrap';
 
 const filters = ['All', 'Today', 'Upcoming', 'Completed'];
 const statThemes = [
@@ -20,6 +20,7 @@ const statThemes = [
   ['bg-[#fff0e5]', 'text-[#bd4a13]'],
 ];
 const P = '#1d1d1fff';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -44,119 +45,120 @@ function EmptyFeed() {
   );
 }
 
-// ---------- Animated Image Cycler (STABLE VERSION) ----------
-function AnimatedImageCycler({ images = [], height = 96, width = 128, rounded = 16 }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
+// ---------- NEW SIMPLE IMAGE SLIDER (Reliable) ----------
+function ImageSlider({ images = [], height = 110, width = 160, rounded = 16 }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef(null);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
+  // Auto slide for multiple images
   useEffect(() => {
-    if (!images || images.length <= 1) {
-      fadeAnim.setValue(1);
-      scaleAnim.setValue(1);
-      return;
-    }
+    if (!images || images.length <= 1) return;
 
     const interval = setInterval(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 0.3,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(() => {
-        setCurrentIndex(prev => wrap(images, prev + 1));
-
-        Animated.parallel([
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 350,
-            useNativeDriver: true,
-          }),
-          Animated.sequence([
-            Animated.timing(scaleAnim, {
-              toValue: 0.96,
-              duration: 150,
-              useNativeDriver: true,
-            }),
-            Animated.spring(scaleAnim, {
-              toValue: 1,
-              friction: 6,
-              useNativeDriver: true,
-            }),
-          ]),
-        ]).start();
+      setActiveIndex(prev => {
+        const next = (prev + 1) % images.length;
+        scrollRef.current?.scrollTo({ x: next * width, animated: true });
+        return next;
       });
-    }, 3200);
+    }, 3000);
 
     return () => clearInterval(interval);
+  }, [images.length, width]);
+
+  // Light pulse for single image
+  useEffect(() => {
+    if (!images || images.length !== 1) return;
+
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.03,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
   }, [images.length]);
 
   if (!images || images.length === 0) return null;
 
-  const safeIndex = ((currentIndex % images.length) + images.length) % images.length;
-  const currentUri = images[safeIndex];
-
-  const containerStyle = {
-    height: typeof height === 'number' ? height : 220,
-    borderRadius: rounded,
-    overflow: 'hidden',
-    backgroundColor: '#f1f5f9',
-  };
-
-  if (typeof width === 'number') {
-    containerStyle.width = width;
-  } else {
-    containerStyle.width = '100%';
-  }
-
-  return (
-    <View style={containerStyle}>
+  // Single image
+  if (images.length === 1) {
+    return (
       <Animated.View
         style={{
-          flex: 1,
-          opacity: fadeAnim,
+          width,
+          height,
+          borderRadius: rounded,
+          overflow: 'hidden',
           transform: [{ scale: scaleAnim }],
         }}
       >
-        {currentUri ? (
+        <Image
+          source={{ uri: images[0] }}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+        />
+      </Animated.View>
+    );
+  }
+
+  // Multiple images - horizontal slider
+  return (
+    <View style={{ width, height, borderRadius: rounded, overflow: 'hidden' }}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={e => {
+          const index = Math.round(e.nativeEvent.contentOffset.x / width);
+          setActiveIndex(index);
+        }}
+      >
+        {images.map((uri, index) => (
           <Image
-            source={{ uri: currentUri }}
-            style={{ width: '100%', height: '100%' }}
+            key={uri + index}
+            source={{ uri }}
+            style={{ width, height }}
             resizeMode="cover"
-            onError={(e) => {
-              console.log('Image load error:', currentUri, e.nativeEvent?.error);
+          />
+        ))}
+      </ScrollView>
+
+      {/* Dots */}
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 8,
+          left: 0,
+          right: 0,
+          flexDirection: 'row',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        {images.map((_, i) => (
+          <View
+            key={i}
+            style={{
+              width: i === activeIndex ? 14 : 6,
+              height: 6,
+              borderRadius: 3,
+              marginHorizontal: 3,
+              backgroundColor: i === activeIndex ? '#ffffff' : 'rgba(255,255,255,0.5)',
             }}
           />
-        ) : (
-          <View style={{ flex: 1, backgroundColor: '#e2e8f0' }} />
-        )}
-      </Animated.View>
-
-      {images.length > 1 && (
-        <View
-          style={{
-            position: 'absolute',
-            bottom: 8,
-            left: 0,
-            right: 0,
-            flexDirection: 'row',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          {images.map((_, i) => (
-            <View
-              key={i}
-              style={{
-                width: i === safeIndex ? 16 : 6,
-                height: 6,
-                borderRadius: 3,
-                marginHorizontal: 3,
-                backgroundColor: i === safeIndex ? '#ffffff' : 'rgba(255,255,255,0.55)',
-              }}
-            />
-          ))}
-        </View>
-      )}
+        ))}
+      </View>
     </View>
   );
 }
@@ -190,6 +192,7 @@ function TaskCard({ item, onPress }) {
           >
             {item.title}
           </Text>
+          <TaskTimer task={item} />
           {item.description ? (
             <Text className="mt-1 text-sm leading-5 text-muted">
               {item.description}
@@ -200,7 +203,7 @@ function TaskCard({ item, onPress }) {
 
       {images.length > 0 && (
         <View className="mt-4">
-          <AnimatedImageCycler
+          <ImageSlider
             images={images}
             height={110}
             width={160}
@@ -221,6 +224,35 @@ function TaskCard({ item, onPress }) {
   );
 }
 
+function TaskTimer({ task }) {
+  const [now, setNow] = useState(Date.now());
+  const shouldShow = Boolean(task.durationMinutes && !task.completed);
+
+  useEffect(() => {
+    if (!shouldShow) return undefined;
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [shouldShow, task.createdAt, task.durationMinutes, task.updatedAt]);
+
+  if (!shouldShow) return null;
+
+  const start = new Date(task.updatedAt || task.createdAt).getTime();
+  const end = start + Number(task.durationMinutes) * 60000;
+  const remaining = end - now;
+  const totalSeconds = Math.max(0, Math.ceil(remaining / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+
+  return (
+    <View className="mt-2 self-start rounded-full bg-[#eeeaff] px-3 py-1">
+      <Text className="text-xs font-bold text-[#5B5CE2]">
+        {remaining <= 0 ? "Time's up" : `⏱️ ${minutes}:${seconds} left`}
+      </Text>
+    </View>
+  );
+}
+
 function MediaCard({ item, onDelete }) {
   const images = item.imageUrls?.length
     ? item.imageUrls
@@ -228,14 +260,16 @@ function MediaCard({ item, onDelete }) {
       ? [item.imageUrl]
       : [];
 
+  const mediaWidth = SCREEN_WIDTH - 48; // padding account
+
   return (
     <View className="mb-4 overflow-hidden rounded-3xl border border-line bg-canvas p-4">
       {images.length > 0 && (
         <View style={{ width: '100%' }}>
-          <AnimatedImageCycler
+          <ImageSlider
             images={images}
             height={220}
-            width="100%"
+            width={mediaWidth}
             rounded={18}
           />
         </View>

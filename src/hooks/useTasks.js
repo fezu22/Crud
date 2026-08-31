@@ -17,6 +17,9 @@ export default function useTasks({
   showError,
   showSuccess,
   setMedia,
+  onTaskSaved,
+  onTaskCompleted,
+  onTaskDeleted,
 }) {
   const [tasks, setTasks] = useState([]);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -83,6 +86,7 @@ export default function useTasks({
       } else {
         setTasks(items => [saved, ...items]);
       }
+      await onTaskSaved?.(saved);
       closeTaskForm();
       showSuccess(
         isEditing ? 'Task has been edited' : 'Task has been created',
@@ -105,7 +109,10 @@ export default function useTasks({
       );
       replaceTask(updated);
       if (isCompleting) {
-        showSuccess('Task has been completed', 'taskDetail');
+        await onTaskCompleted?.(task._id);
+        showSuccess('Task completed!', 'taskDetail');
+      } else {
+        showSuccess('Task marked as open', 'taskDetail');
       }
     } catch (error) {
       showError('Could not update task', error);
@@ -134,6 +141,7 @@ export default function useTasks({
       onConfirm: async () => {
         try {
           await deleteTask(taskId, token);
+          await onTaskDeleted?.(taskId);
           setTasks(items => items.filter(item => item._id !== taskId));
           setSelectedTask(null);
           showSuccess('Task has been deleted');
