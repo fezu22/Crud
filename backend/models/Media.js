@@ -21,6 +21,12 @@ const MediaSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    kind: {
+      type: String,
+      enum: ['upload', 'taskAttachment'],
+      default: 'upload',
+      index: true,
+    },
   },
   { timestamps: true }
 );

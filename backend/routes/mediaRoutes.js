@@ -3,6 +3,7 @@ const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const Media = require('../models/Media');
+const Task = require('../models/Task');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -37,6 +38,37 @@ const upload = multer({
 // All media routes require JWT authentication
 router.use(auth);
 
+async function destroyCloudinaryAsset(publicId) {
+  if (!publicId) return;
+  const result = await cloudinary.uploader.destroy(publicId, {
+    invalidate: true,
+  });
+  if (!['ok', 'not found'].includes(result?.result)) {
+    throw new Error('Cloudinary could not delete the asset');
+  }
+}
+
+async function replaceTaskImageReferences(userId, oldUrl, newUrl = '') {
+  if (!oldUrl) return;
+  const tasks = await Task.find({
+    user: userId,
+    $or: [{ imageUrl: oldUrl }, { imageUrls: oldUrl }],
+  });
+  await Promise.all(
+    tasks.map(task => {
+      task.imageUrls = [
+        ...new Set(
+          (task.imageUrls || [])
+            .map(url => (url === oldUrl ? newUrl : url))
+            .filter(Boolean),
+        ),
+      ];
+      if (task.imageUrl === oldUrl) task.imageUrl = task.imageUrls[0] || '';
+      return task.save();
+    }),
+  );
+}
+
 // ================= 1. UPLOAD MEDIA =================
 // POST /api/media/upload
 router.post('/upload', upload.single('image'), async (req, res) => {
@@ -58,6 +90,10 @@ router.post('/upload', upload.single('image'), async (req, res) => {
       cloudinaryPublicId: publicId,
       imageUrl: secureUrl,
       title: req.body.title ? req.body.title.trim() : '',
+      kind:
+        req.body.kind === 'taskAttachment'
+          ? 'taskAttachment'
+          : 'upload',
     });
 
     console.log(`✅ Media created in MongoDB for user: ${req.user._id} (${media._id})`);
@@ -81,6 +117,53 @@ router.get('/my-uploads', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res, next) => {
+  try {
+    const media = await Media.findOne({
+      _id: req.params.id,
+      userId: req.user._id,
+    });
+    if (!media) return res.status(404).json({ message: 'Media not found' });
+    req.ownedMedia = media;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}, upload.single('image'), async (req, res) => {
+  const media = req.ownedMedia;
+  const oldUrl = media.imageUrl;
+  const newPublicId = req.file?.filename || req.file?.public_id;
+  const newUrl = req.file?.path || req.file?.secure_url;
+  try {
+    if (req.body.title !== undefined) media.title = req.body.title.trim();
+    if (req.file) {
+      if (!newPublicId || !newUrl) {
+        return res.status(500).json({
+          message: 'Failed to retrieve Cloudinary upload details',
+        });
+      }
+      try {
+        await destroyCloudinaryAsset(media.cloudinaryPublicId);
+      } catch (error) {
+        await destroyCloudinaryAsset(newPublicId).catch(() => {});
+        return res.status(502).json({
+          message: 'Old Cloudinary image could not be removed. Nothing was changed.',
+        });
+      }
+      media.cloudinaryPublicId = newPublicId;
+      media.imageUrl = newUrl;
+    }
+    await media.save();
+    if (req.file) await replaceTaskImageReferences(req.user._id, oldUrl, newUrl);
+    res.json(media);
+  } catch (err) {
+    if (req.file) await destroyCloudinaryAsset(newPublicId).catch(() => {});
+    res
+      .status(500)
+      .json({ message: err.message || 'Failed to update media' });
+  }
+});
+
 // ================= 3. DELETE MEDIA =================
 // DELETE /api/media/:id
 router.delete('/:id', async (req, res) => {
@@ -98,13 +181,16 @@ router.delete('/:id', async (req, res) => {
 
     // 1. Destroy asset in Cloudinary
     try {
-      await cloudinary.uploader.destroy(media.cloudinaryPublicId);
+      await destroyCloudinaryAsset(media.cloudinaryPublicId);
       console.log(`🗑️ Removed from Cloudinary: ${media.cloudinaryPublicId}`);
     } catch (cErr) {
-      console.warn('⚠️ Cloudinary destroy warning:', cErr.message);
+      return res.status(502).json({
+        message: 'Cloudinary image could not be deleted. Please try again.',
+      });
     }
 
     // 2. Remove document from MongoDB
+    await replaceTaskImageReferences(req.user._id, media.imageUrl);
     await Media.findByIdAndDelete(req.params.id);
     console.log(`✅ Removed Media doc from MongoDB: ${req.params.id}`);
 

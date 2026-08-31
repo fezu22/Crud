@@ -156,7 +156,7 @@ export async function deleteProject(id, token) {
 
 // ================= CLOUDINARY MEDIA API =================
 
-export async function uploadMedia(file, title, token) {
+export async function uploadMedia(file, title, token, kind = 'upload') {
   const formData = new FormData();
   formData.append('image', {
     uri: file.uri,
@@ -167,6 +167,7 @@ export async function uploadMedia(file, title, token) {
   if (title) {
     formData.append('title', title);
   }
+  formData.append('kind', kind);
 
   const response = await fetch(`${API_BASE_URL}/media/upload`, {
     method: 'POST',
@@ -204,5 +205,25 @@ export async function deleteMedia(id, token) {
   if (!response.ok) {
     throw new Error(data.message || 'Failed to delete media');
   }
+  return data;
+}
+
+export async function updateMedia(id, { title, image }, token) {
+  const formData = new FormData();
+  formData.append('title', title || '');
+  if (image) {
+    formData.append('image', {
+      uri: image.uri,
+      type: image.type || 'image/jpeg',
+      name: image.fileName || `replacement_${Date.now()}.jpg`,
+    });
+  }
+  const response = await fetch(`${API_BASE_URL}/media/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message || 'Failed to update media');
   return data;
 }
