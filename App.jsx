@@ -1,8 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import './global.css';
 import {
+  Animated,
   Keyboard,
   LayoutAnimation,
+  Modal,
+  PanResponder,
   Platform,
   SafeAreaView,
   StatusBar,
@@ -82,7 +90,166 @@ function localDateKey(value) {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+function DraggableSuccessModal({ visible, message, onClose }) {
+  const position = useRef(
+    new Animated.ValueXY({
+      x: 0,
+      y: 0,
+    }),
+  ).current;
 
+  const lastPosition = useRef({
+    x: 0,
+    y: 0,
+  });
+
+  useEffect(() => {
+    if (visible) {
+      lastPosition.current = {
+        x: 0,
+        y: 0,
+      };
+
+      position.setValue({
+        x: 0,
+        y: 0,
+      });
+    }
+  }, [visible, position]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+
+      onMoveShouldSetPanResponder: () => true,
+
+      onPanResponderMove: (_, gesture) => {
+        position.setValue({
+          x: lastPosition.current.x + gesture.dx,
+          y: lastPosition.current.y + gesture.dy,
+        });
+      },
+
+      onPanResponderRelease: (_, gesture) => {
+        lastPosition.current = {
+          x: lastPosition.current.x + gesture.dx,
+          y: lastPosition.current.y + gesture.dy,
+        };
+      },
+    }),
+  ).current;
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.45)',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Animated.View
+          style={{
+            width: '82%',
+            maxWidth: 360,
+            backgroundColor: '#ffffff',
+            borderRadius: 22,
+            padding: 24,
+            transform: position.getTranslateTransform(),
+            shadowColor: '#000',
+            shadowOffset: {
+              width: 0,
+              height: 5,
+            },
+            shadowOpacity: 0.25,
+            shadowRadius: 10,
+            elevation: 12,
+          }}
+        >
+          <View
+            {...panResponder.panHandlers}
+            style={{
+              alignItems: 'center',
+              paddingBottom: 10,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                color: '#9CA3AF',
+                marginBottom: 15,
+              }}
+            >
+              ↕ Drag me
+            </Text>
+
+            <View
+              style={{
+                width: 78,
+                height: 78,
+                borderRadius: 39,
+                borderWidth: 4,
+                borderColor: '#22C55E',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 20,
+              }}
+            >
+              <Text
+                style={{
+                  color: '#22C55E',
+                  fontSize: 45,
+                  fontWeight: '700',
+                }}
+              >
+                ✓
+              </Text>
+            </View>
+
+            <Text
+              style={{
+                color: '#111827',
+                fontSize: 21,
+                fontWeight: '700',
+                textAlign: 'center',
+              }}
+            >
+              {message}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={onClose}
+            style={{
+              backgroundColor: '#2563EB',
+              paddingVertical: 13,
+              borderRadius: 10,
+              marginTop: 20,
+              alignItems: 'center',
+            }}
+          >
+            <Text
+              style={{
+                color: '#ffffff',
+                fontSize: 16,
+                fontWeight: '700',
+              }}
+            >
+              OK
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
 export default function App() {
   const preferences = usePreferences();
   const [token, setToken] = useState(null);
@@ -105,6 +272,11 @@ export default function App() {
   const [formProject, setFormProject] = useState(null);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(emptyConfirm);
+
+  const [successModal, setSuccessModal] = useState({
+    visible: false,
+    message: '',
+  });
 
   useEffect(() => {
     restoreSession();
@@ -148,6 +320,20 @@ export default function App() {
       title,
       textBody: error.message,
       button: 'OK',
+    });
+  }
+
+  function showSuccess(message) {
+    setSuccessModal({
+      visible: true,
+      message,
+    });
+  }
+
+  function closeSuccess() {
+    setSuccessModal({
+      visible: false,
+      message: '',
     });
   }
   function ask(config) {
@@ -321,32 +507,53 @@ export default function App() {
     );
     setSelectedTask(updated);
   }
-
   async function saveTask(form) {
     setSaving(true);
+
+    const isEditing = Boolean(editingTaskId);
+
     try {
       const batchId = generateBatchId();
+
       const uploaded = await Promise.all(
         form.newImages.map(image =>
-          uploadMedia(image, form.title, token, 'taskAttachment', batchId),
+          uploadMedia(
+            image,
+            form.title,
+            token,
+            'taskAttachment',
+            batchId,
+          ),
         ),
       );
+
       const imageUrls = [
         ...form.imageUrls,
         ...uploaded.map(item => item.imageUrl).filter(Boolean),
       ];
-      const payload = { ...form, imageUrls, imageUrl: imageUrls[0] || '' };
+
+      const payload = {
+        ...form,
+        imageUrls,
+        imageUrl: imageUrls[0] || '',
+      };
+
       delete payload.newImages;
-      const saved = editingTaskId
+
+      const saved = isEditing
         ? await updateTask(editingTaskId, payload, token)
         : await createTask(payload, token);
-      if (editingTaskId) {
-        // Editing an existing task: refresh the open detail view.
+
+      if (isEditing) {
         replaceTask(saved);
+
+        showSuccess('Task has been edited');
       } else {
-        // Creating a new task: just add it to the list, stay on Home.
         setTasks(items => [saved, ...items]);
+
+        showSuccess('Task has been created');
       }
+
       closeTaskForm();
     } catch (error) {
       showError('Could not save task', error);
@@ -356,27 +563,75 @@ export default function App() {
   }
   async function toggleTask(task) {
     try {
+      const isCompleting = !task.completed;
+
       const updated = await updateTask(
         task._id,
-        { completed: !task.completed },
+        {
+          completed: !task.completed,
+        },
         token,
       );
+
       replaceTask(updated);
+
+      if (isCompleting) {
+        showSuccess('Task has been completed');
+      }
     } catch (error) {
       showError('Could not update task', error);
     }
   }
-  async function toggleSubtask(task, index) {
+  async function toggleSubtask(firstArg, secondArg) {
     try {
-      const subtasks = task.subtasks.map((item, i) =>
-        i === index ? { ...item, done: !item.done } : item,
+      let task = selectedTask;
+      let subtask = firstArg;
+
+      // Supports either onToggleSubtask(subtask)
+      // or onToggleSubtask(task, subtask).
+      if (
+        firstArg &&
+        typeof firstArg === 'object' &&
+        (firstArg._id || firstArg.id) &&
+        Array.isArray(firstArg.subtasks) &&
+        secondArg !== undefined
+      ) {
+        task = firstArg;
+        subtask = secondArg;
+      }
+
+      if (!task?._id) return;
+
+      const subtaskId =
+        typeof subtask === 'object'
+          ? subtask?._id || subtask?.id
+          : subtask;
+
+      if (!subtaskId) return;
+
+      const updatedSubtasks = (task.subtasks || []).map(item => {
+        const itemId = item?._id || item?.id;
+
+        if (itemId !== subtaskId) return item;
+
+        return {
+          ...item,
+          completed: !item.completed,
+        };
+      });
+
+      const updated = await updateTask(
+        task._id,
+        { subtasks: updatedSubtasks },
+        token,
       );
-      const updated = await updateTask(task._id, { subtasks }, token);
+
       replaceTask(updated);
     } catch (error) {
       showError('Could not update subtask', error);
     }
   }
+
   function removeTask(id) {
     ask({
       title: 'Delete Task',
@@ -388,6 +643,7 @@ export default function App() {
           await deleteTask(id, token);
           setTasks(items => items.filter(item => item._id !== id));
           setSelectedTask(null);
+          showSuccess('Task has been deleted');
         } catch (error) {
           showError('Could not delete task', error);
         }
@@ -478,6 +734,13 @@ export default function App() {
             isLoading={authLoading}
           />
           <ConfirmDialog config={confirm} onCancel={closeConfirm} />
+
+
+          <DraggableSuccessModal
+            visible={successModal.visible}
+            message={successModal.message}
+            onClose={closeSuccess}
+          />
         </View>
       </AlertNotificationRoot>
     );
@@ -573,6 +836,12 @@ export default function App() {
           onSave={saveProject}
         />
         <ConfirmDialog config={confirm} onCancel={closeConfirm} />
+
+        <DraggableSuccessModal
+          visible={successModal.visible}
+          message={successModal.message}
+          onClose={closeSuccess}
+        />
       </SafeAreaView>
     </AlertNotificationRoot>
   );
