@@ -8,82 +8,226 @@ import {
   View,
 } from 'react-native';
 
-export default function DraggableSuccessModal({ visible, message, onClose }) {
-  const position = useRef(new Animated.ValueXY()).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(0.86)).current;
-  const lastPosition = useRef({ x: 0, y: 0 });
+export default function DraggableSuccessModal({
+  visible,
+  message,
+  onClose,
+}) {
+  const position = useRef(
+    new Animated.ValueXY({
+      x: 0,
+      y: 0,
+    }),
+  ).current;
+
+  const opacity = useRef(
+    new Animated.Value(0),
+  ).current;
+
+  const scale = useRef(
+    new Animated.Value(0.82),
+  ).current;
+
+  const translateY = useRef(
+    new Animated.Value(25),
+  ).current;
+
+  const lastPosition = useRef({
+    x: 0,
+    y: 0,
+  });
 
   useEffect(() => {
     if (!visible) return;
-    lastPosition.current = { x: 0, y: 0 };
-    position.setValue({ x: 0, y: 0 });
+
+    // Reset drag position every time alert opens
+    lastPosition.current = {
+      x: 0,
+      y: 0,
+    };
+
+    position.setValue({
+      x: 0,
+      y: 0,
+    });
+
+    // Reset animation
     opacity.setValue(0);
-    scale.setValue(0.86);
+    scale.setValue(0.82);
+    translateY.setValue(25);
+
+    // Open animation
     Animated.parallel([
       Animated.timing(opacity, {
         toValue: 1,
         duration: 220,
         useNativeDriver: true,
       }),
+
       Animated.spring(scale, {
         toValue: 1,
-        damping: 13,
-        stiffness: 150,
+        damping: 14,
+        stiffness: 170,
         mass: 0.8,
         useNativeDriver: true,
       }),
-    ]).start();
-    const timer = setTimeout(() => {
-      onClose();
-    }, 2500);
 
-    return () => clearTimeout(timer);
-  }, [opacity, position, scale, visible, onClose]);
+      Animated.spring(translateY, {
+        toValue: 0,
+        damping: 15,
+        stiffness: 160,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [
+    visible,
+    opacity,
+    position,
+    scale,
+    translateY,
+  ]);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+
       onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2,
+        Math.abs(gesture.dx) > 3 ||
+        Math.abs(gesture.dy) > 3,
+
       onPanResponderMove: (_, gesture) => {
         position.setValue({
-          x: lastPosition.current.x + gesture.dx,
-          y: lastPosition.current.y + gesture.dy,
+          x:
+            lastPosition.current.x +
+            gesture.dx,
+
+          y:
+            lastPosition.current.y +
+            gesture.dy,
         });
       },
+
       onPanResponderRelease: (_, gesture) => {
         lastPosition.current = {
-          x: lastPosition.current.x + gesture.dx,
-          y: lastPosition.current.y + gesture.dy,
+          x:
+            lastPosition.current.x +
+            gesture.dx,
+
+          y:
+            lastPosition.current.y +
+            gesture.dy,
         };
       },
     }),
   ).current;
 
-  if (!visible) return null;
+  function handleClose() {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+
+      Animated.timing(scale, {
+        toValue: 0.92,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+
+      Animated.timing(translateY, {
+        toValue: 15,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      if (onClose) {
+        onClose();
+      }
+    });
+  }
+
+  if (!visible) {
+    return null;
+  }
+
   return (
-    <Animated.View style={[styles.overlay, { opacity }]}>
+    <Animated.View
+      style={[
+        styles.overlay,
+        {
+          opacity,
+        },
+      ]}
+    >
       <Animated.View
         style={[
           styles.card,
           {
             transform: [
               ...position.getTranslateTransform(),
-              { scale },
+
+              {
+                translateY,
+              },
+
+              {
+                scale,
+              },
             ],
           },
         ]}
       >
-        <View {...panResponder.panHandlers} style={styles.dragArea}>
-          <View style={styles.checkCircle}>
-            <Text style={styles.check}>{'\u2713'}</Text>
-          </View>
-          <Text style={styles.message}>{message}</Text>
-          <Text style={styles.subtitle}>Keep going, you're doing great!</Text>
+        {/* DRAG HANDLE */}
+        <View
+          {...panResponder.panHandlers}
+          style={styles.dragArea}
+        >
+          <View style={styles.dragHandle} />
         </View>
-        <TouchableOpacity activeOpacity={0.8} onPress={onClose} style={styles.button}>
-          <Text style={styles.buttonText}>OK</Text>
+
+        {/* SUCCESS ICON */}
+        <View style={styles.iconOuter}>
+          <View style={styles.iconMiddle}>
+            <View style={styles.iconCircle}>
+              <Text style={styles.check}>
+                ✓
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* SMALL LABEL */}
+        <Text style={styles.successLabel}>
+          SUCCESS
+        </Text>
+
+        {/* MAIN MESSAGE */}
+        <Text style={styles.message}>
+          {message}
+        </Text>
+
+        {/* SUBTITLE */}
+        <Text style={styles.subtitle}>
+          Keep going, you're doing great!
+        </Text>
+
+        {/* DIVIDER */}
+        <View style={styles.divider} />
+
+        {/* BUTTON */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={handleClose}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>
+            Continue
+          </Text>
+
+          <Text style={styles.arrow}>
+            →
+          </Text>
         </TouchableOpacity>
       </Animated.View>
     </Animated.View>
@@ -93,54 +237,211 @@ export default function DraggableSuccessModal({ visible, message, onClose }) {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
+
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    zIndex: 1000,
-    elevation: 1000,
+
+    backgroundColor:
+      'rgba(10, 8, 20, 0.62)',
+
+    paddingHorizontal: 20,
+
+    zIndex: 9999,
+    elevation: 9999,
   },
+
   card: {
-    width: '82%',
-    maxWidth: 360,
-    borderRadius: 28,
+    width: '100%',
+    maxWidth: 355,
+
     backgroundColor: '#FFFFFF',
-    padding: 24,
+
+    borderRadius: 30,
+
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 22,
+
+    alignItems: 'center',
+
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 12,
+
+    shadowOffset: {
+      width: 0,
+      height: 14,
+    },
+
+    shadowOpacity: 0.22,
+    shadowRadius: 25,
+
+    elevation: 24,
   },
-  dragArea: { alignItems: 'center', paddingBottom: 10 },
-  checkCircle: {
-    width: 78,
-    height: 78,
-    marginBottom: 20,
+
+  dragArea: {
+    width: '100%',
+    height: 30,
+
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 4,
-    borderColor: '#22C55E',
-    borderRadius: 39,
   },
-  check: { color: '#22C55E', fontSize: 45, fontWeight: '700' },
+
+  dragHandle: {
+    width: 42,
+    height: 5,
+
+    borderRadius: 50,
+
+    backgroundColor: '#E5E7EB',
+  },
+
+  iconOuter: {
+    width: 108,
+    height: 108,
+
+    borderRadius: 54,
+
+    backgroundColor: '#F0FDF4',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    marginTop: 8,
+    marginBottom: 18,
+  },
+
+  iconMiddle: {
+    width: 88,
+    height: 88,
+
+    borderRadius: 44,
+
+    backgroundColor: '#DCFCE7',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  iconCircle: {
+    width: 70,
+    height: 70,
+
+    borderRadius: 35,
+
+    backgroundColor: '#22C55E',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    shadowColor: '#22C55E',
+
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+
+    elevation: 8,
+  },
+
+  check: {
+    color: '#FFFFFF',
+
+    fontSize: 38,
+    fontWeight: '800',
+
+    marginTop: -2,
+  },
+
+  successLabel: {
+    color: '#7C3AED',
+
+    fontSize: 11,
+    fontWeight: '800',
+
+    letterSpacing: 2,
+
+    marginBottom: 8,
+  },
+
   message: {
     color: '#111827',
-    fontSize: 21,
-    fontWeight: '700',
+
+    fontSize: 23,
+    fontWeight: '800',
+
+    lineHeight: 29,
+
     textAlign: 'center',
+
+    paddingHorizontal: 5,
   },
+
   subtitle: {
-    marginTop: 8,
-    color: '#6B7280',
+    marginTop: 9,
+
+    color: '#8A8F9C',
+
     fontSize: 14,
+
+    lineHeight: 20,
+
     textAlign: 'center',
+
+    paddingHorizontal: 12,
   },
+
+  divider: {
+    width: '100%',
+    height: 1,
+
+    backgroundColor: '#F1F1F5',
+
+    marginTop: 23,
+    marginBottom: 18,
+  },
+
   button: {
-    marginTop: 20,
-    alignItems: 'center',
-    borderRadius: 14,
+    width: '100%',
+    minHeight: 54,
+
+    borderRadius: 17,
+
     backgroundColor: '#7C3AED',
-    paddingVertical: 13,
+
+    flexDirection: 'row',
+
+    alignItems: 'center',
+    justifyContent: 'center',
+
+    shadowColor: '#7C3AED',
+
+    shadowOffset: {
+      width: 0,
+      height: 7,
+    },
+
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+
+    elevation: 7,
   },
-  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  buttonText: {
+    color: '#FFFFFF',
+
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  arrow: {
+    color: '#FFFFFF',
+
+    fontSize: 21,
+    fontWeight: '600',
+
+    marginLeft: 9,
+    marginTop: -1,
+  },
 });

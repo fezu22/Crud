@@ -1384,6 +1384,11 @@
     "@nodelib/fs.scandir" "2.1.5"
     fastq "^1.6.0"
 
+"@notifee/react-native@^9.1.8":
+  version "9.1.8"
+  resolved "https://registry.npmjs.org/@notifee/react-native/-/react-native-9.1.8.tgz"
+  integrity sha512-Az/dueoPerJsbbjRxu8a558wKY+gONUrfoy3Hs++5OqbeMsR0dYe6P+4oN6twrLFyzAhEA1tEoZRvQTFDRmvQg==
+
 "@react-native-async-storage/async-storage@^3.1.1":
   version "3.1.1"
   resolved "https://registry.npmjs.org/@react-native-async-storage/async-storage/-/async-storage-3.1.1.tgz"
@@ -1542,6 +1547,11 @@
     picocolors "^1.1.1"
     prompts "^2.4.2"
     semver "^7.5.2"
+
+"@react-native-documents/picker@^12.0.2":
+  version "12.0.2"
+  resolved "https://registry.npmjs.org/@react-native-documents/picker/-/picker-12.0.2.tgz"
+  integrity sha512-tiaPQjSdsaCkKw/N8XB+DXfhOJ+KJ1OYDliBGoBHEqLI7AhUsSPhn8fRI/gHs7hpYzqOBKf+em9MUrPIA9mlWA==
 
 "@react-native/assets-registry@0.86.2":
   version "0.86.2"
@@ -5726,7 +5736,7 @@ react-native-worklets@^0.12.1, react-native-worklets@0.12.x:
     convert-source-map "^2.0.0"
     semver "^7.7.4"
 
-react-native@*, react-native@>=0.62.0, "react-native@0.83 - 0.87", react-native@0.86.2:
+react-native@*, react-native@>=0.62.0, react-native@>=0.79.0, "react-native@0.83 - 0.87", react-native@0.86.2:
   version "0.86.2"
   resolved "https://registry.npmjs.org/react-native/-/react-native-0.86.2.tgz"
   integrity sha512-zbJXGZpwfZGA79Z9ob6Atvfx4nAQL8yJBa35s58E4Oo+khPykfQP2sTeumkKbjwajFYfVayg8pj7Il9nIfTk7A==

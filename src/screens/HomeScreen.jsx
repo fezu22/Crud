@@ -53,7 +53,7 @@ function ImageSlider({ images = [], height = 110, width = 160, rounded = 16 }) {
 
   // Auto slide for multiple images
   useEffect(() => {
-    if (!images || images.length <= 1) return;
+    if (images.length <= 1) return;
 
     const interval = setInterval(() => {
       setActiveIndex(prev => {
@@ -68,7 +68,7 @@ function ImageSlider({ images = [], height = 110, width = 160, rounded = 16 }) {
 
   // Light pulse for single image
   useEffect(() => {
-    if (!images || images.length !== 1) return;
+    if (images.length !== 1) return;
 
     const pulse = Animated.loop(
       Animated.sequence([
@@ -86,7 +86,7 @@ function ImageSlider({ images = [], height = 110, width = 160, rounded = 16 }) {
     );
     pulse.start();
     return () => pulse.stop();
-  }, [images.length]);
+  }, [images.length, scaleAnim]);
 
   if (!images || images.length === 0) return null;
 
@@ -192,7 +192,7 @@ function TaskCard({ item, onPress }) {
           >
             {item.title}
           </Text>
-          <TaskTimer task={item} />
+
           {item.description ? (
             <Text className="mt-1 text-sm leading-5 text-muted">
               {item.description}
@@ -221,35 +221,6 @@ function TaskCard({ item, onPress }) {
         </Text>
       </View>
     </TouchableOpacity>
-  );
-}
-
-function TaskTimer({ task }) {
-  const [now, setNow] = useState(Date.now());
-  const shouldShow = Boolean(task.durationMinutes && !task.completed);
-
-  useEffect(() => {
-    if (!shouldShow) return undefined;
-    setNow(Date.now());
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [shouldShow, task.createdAt, task.durationMinutes, task.updatedAt]);
-
-  if (!shouldShow) return null;
-
-  const start = new Date(task.updatedAt || task.createdAt).getTime();
-  const end = start + Number(task.durationMinutes) * 60000;
-  const remaining = end - now;
-  const totalSeconds = Math.max(0, Math.ceil(remaining / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = String(totalSeconds % 60).padStart(2, '0');
-
-  return (
-    <View className="mt-2 self-start rounded-full bg-[#eeeaff] px-3 py-1">
-      <Text className="text-xs font-bold text-[#5B5CE2]">
-        {remaining <= 0 ? "Time's up" : `⏱️ ${minutes}:${seconds} left`}
-      </Text>
-    </View>
   );
 }
 

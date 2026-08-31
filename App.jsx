@@ -20,6 +20,7 @@ import ConfirmDialog from './src/components/ConfirmDialog';
 import BottomNav from './src/navigation/BottomNav';
 import HomeScreen from './src/screens/HomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
+import MediaLibraryScreen from './src/screens/MediaLibraryScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
 import ProjectsScreen from './src/screens/projects/ProjectsScreen';
 import ProjectDetailModal from './src/screens/projects/ProjectDetailModal';
@@ -32,8 +33,7 @@ import useTasks from './src/hooks/useTasks';
 import { appThemes } from './src/theme/appTheme';
 import {
   cancelTaskReminders,
-  scheduleTaskReminders,
-  showDueTaskReminder,
+  syncTaskReminders,
 } from './src/services/notifications';
 import {
   createProject,
@@ -43,6 +43,7 @@ import {
   getTasks,
   loginUser,
   registerUser,
+  uploadLibraryMedia,
 } from './src/services/api';
 import { clearSession, loadSession, saveSession } from './src/storage/sessionStorage';
 
@@ -76,6 +77,7 @@ export default function App() {
   const [projectDetailOpen, setProjectDetailOpen] = useState(false);
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [confirm, setConfirm] = useState(emptyConfirm);
   const [taskOriginTab, setTaskOriginTab] = useState(null);
   const [successModal, setSuccessModal] = useState({
@@ -94,7 +96,6 @@ export default function App() {
     showError,
     showSuccess,
     setMedia,
-    onTaskSaved: scheduleTaskReminders,
     onTaskCompleted: cancelTaskReminders,
     onTaskDeleted: cancelTaskReminders,
   });
@@ -133,12 +134,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
   useEffect(() => {
-    if (preferences.ready) {
-      showDueTaskReminder(tasks, preferences.notifications).catch(error =>
-        console.warn('Could not show task reminder:', error),
-      );
-    }
-  }, [preferences.notifications, preferences.ready, tasks]);
+    if (!preferences.ready || !token) return;
+    syncTaskReminders(tasks, preferences.notifications).catch(error =>
+      console.warn('Could not sync task reminders:', error),
+    );
+  }, [preferences.notifications, preferences.ready, tasks, token]);
 
   async function restoreSession() {
     try {
@@ -263,6 +263,34 @@ export default function App() {
       },
     });
   }
+  async function addLibraryMedia(file, title) {
+    setUploadingMedia(true);
+    try {
+      const uploaded = await uploadLibraryMedia(file, title, token);
+      setMedia(items => [uploaded, ...items]);
+      showSuccess('Media uploaded!');
+    } catch (error) {
+      throw error;
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+  function removeLibraryMedia(item) {
+    ask({
+      title: 'Delete Media',
+      message: 'Delete this file from Cloudinary and your library?',
+      confirmText: 'Delete',
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteMedia(item._id, token);
+          setMedia(items => items.filter(value => value._id !== item._id));
+        } catch (error) {
+          showError('Could not delete media', error);
+        }
+      },
+    });
+  }
   async function saveProject(form) {
     setSavingProject(true);
     try {
@@ -311,6 +339,14 @@ export default function App() {
                 setSelectedProject(project);
                 setProjectDetailOpen(true);
               }}
+            />
+          ) : activeTab === 'media' ? (
+            <MediaLibraryScreen
+              media={media}
+              uploading={uploadingMedia}
+              onUpload={addLibraryMedia}
+              onDelete={removeLibraryMedia}
+              onError={error => showError('Could not select media', error)}
             />
           ) : (
             <ProfileScreen

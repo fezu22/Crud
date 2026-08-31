@@ -1,13 +1,33 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import notifee, {
   AndroidImportance,
+  AndroidNotificationSetting,
   AndroidStyle,
   AuthorizationStatus,
   TriggerType,
 } from '@notifee/react-native';
 
-const LAST_REMINDER = '@todi_last_reminder';
-const APP_NAME = 'Todi';
+const APP_NAME = 'Medi';
+const CHANNEL_ID = 'medi-task-reminders';
+const REMINDER_PREFIX = 'task-reminder-';
+const LEGACY_TIMER_PREFIX = 'task-timer-';
+const ADVANCE_MS = 2 * 60000;
+
+function getReminderTimestamp(task) {
+  if (!task?.reminderAt) return null;
+  const selectedTime = new Date(task.reminderAt).getTime();
+  if (!Number.isFinite(selectedTime)) return null;
+  return selectedTime - ADVANCE_MS;
+}
+
+async function ensureChannel() {
+  return notifee.createChannel({
+    id: CHANNEL_ID,
+    name: 'Task reminders',
+    importance: AndroidImportance.HIGH,
+    sound: 'default',
+    vibration: true,
+  });
+}
 
 export async function requestNotificationPermission() {
   const settings = await notifee.requestPermission();
@@ -17,112 +37,34 @@ export async function requestNotificationPermission() {
   );
 }
 
-// Daily due tasks reminder (app open pe)
-export async function showDueTaskReminder(tasks, enabled) {
-  if (!enabled || !tasks.length) return false;
-  if (!(await requestNotificationPermission())) return false;
+async function createTaskReminder(task, channelId) {
+  const timestamp = getReminderTimestamp(task);
+  if (!timestamp || timestamp <= Date.now()) return false;
 
-  const today = new Date().toISOString().slice(0, 10);
-  if ((await AsyncStorage.getItem(LAST_REMINDER)) === today) return false;
-
-  const due = tasks.filter(
-    task =>
-      !task.completed &&
-      task.dueDate &&
-      new Date(task.dueDate).toISOString().slice(0, 10) === today,
-  );
-  if (!due.length) return false;
-
-  const channelId = await notifee.createChannel({
-    id: 'todi-reminders',
-    name: 'Todi Reminders',
-    importance: AndroidImportance.HIGH,
-    sound: 'default',
+  const settings = await notifee.getNotificationSettings();
+  const exactAlarmsEnabled =
+    settings.android?.alarm === AndroidNotificationSetting.ENABLED;
+  const selectedTime = new Date(task.reminderAt).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
   });
-
-  await notifee.displayNotification({
-    id: `due-tasks-${today}`,
-    title: `📋 ${APP_NAME}`,
-    body: due.length === 1
-      ? `You have 1 task due today: "${due[0].title}"`
-      : `You have ${due.length} tasks due today. Stay on track!`,
-    subtitle: 'Daily Reminder',
-    android: {
-      channelId,
-      smallIcon: 'ic_launcher',
-      largeIcon: 'ic_launcher',
-      pressAction: { id: 'default' },
-      color: '#7C3AED',          // purple brand color
-      style: {
-        type: AndroidStyle.BIGTEXT,
-        text: due.map((t, i) => `${i + 1}. ${t.title}`).join('\n'),
-      },
-    },
-    ios: {
-      sound: 'default',
-      foregroundPresentationOptions: {
-        badge: true,
-        sound: true,
-        banner: true,
-        list: true,
-      },
-    },
-  });
-
-  await AsyncStorage.setItem(LAST_REMINDER, today);
-  return true;
-}
-
-// Smart timer reminder (duration khatam hone pe)
-export async function scheduleTaskReminders(task) {
-  if (!task?._id || task.completed) return;
-
-  const totalMinutes = Math.max(1, task.durationMinutes || 30);
-
-  // Pehle purani cancel karo
-  await cancelTaskReminders(task._id);
-
-  if (!(await requestNotificationPermission())) return;
-
-  const channelId = await notifee.createChannel({
-    id: 'todi-timer',
-    name: 'Todi Timer',
-    importance: AndroidImportance.HIGH,
-    sound: 'default',
-    vibration: true,
-  });
-
-  const triggerTime = Date.now() + totalMinutes * 60 * 1000;
 
   await notifee.createTriggerNotification(
     {
-      id: `task-timer-${task._id}`,
-      title: `⏰ ${APP_NAME}`,
-      body: `Time's up! "${task.title}" is complete.`,
-      subtitle: 'Timer Finished',
+      id: `${REMINDER_PREFIX}${task._id}`,
+      title: `Task starts in 2 minutes · ${APP_NAME}`,
+      body: `"${task.title}" is scheduled for ${selectedTime}.`,
+      subtitle: 'Task reminder',
+      data: { taskId: String(task._id) },
       android: {
         channelId,
         smallIcon: 'ic_launcher',
-        largeIcon: 'ic_launcher',
         pressAction: { id: 'default' },
         color: '#7C3AED',
-        showChronometer: true,
-        chronometerDirection: 'down',
-        timestamp: triggerTime,
         style: {
           type: AndroidStyle.BIGTEXT,
-          text: `Your ${totalMinutes} min timer for "${task.title}" has ended.\n\nOpen ${APP_NAME} to mark it done or start the next task.`,
+          text: `Get ready for "${task.title}". It starts at ${selectedTime}.`,
         },
-        actions: [
-          {
-            title: '✅ Mark Done',
-            pressAction: { id: 'mark-done' },
-          },
-          {
-            title: '👀 Open App',
-            pressAction: { id: 'default' },
-          },
-        ],
       },
       ios: {
         sound: 'default',
@@ -136,20 +78,87 @@ export async function scheduleTaskReminders(task) {
     },
     {
       type: TriggerType.TIMESTAMP,
-      timestamp: triggerTime,
+      timestamp,
+      ...(exactAlarmsEnabled
+        ? { alarmManager: { allowWhileIdle: true } }
+        : {}),
     },
   );
+  return true;
+}
+
+export async function scheduleTaskReminders(task) {
+  if (!task?._id) return false;
+  await cancelTaskReminders(task._id);
+  if (task.completed || !getReminderTimestamp(task)) return false;
+  if (!(await requestNotificationPermission())) return false;
+  return createTaskReminder(task, await ensureChannel());
 }
 
 export async function cancelTaskReminders(taskId) {
   if (!taskId) return;
   try {
-    await notifee.cancelNotification(`task-timer-${taskId}`);
-    // safety: cancel old style ids bhi
-    for (let i = 1; i <= 6; i++) {
-      await notifee.cancelNotification(`task-${taskId}-${i}`);
-    }
-  } catch (e) {
-    console.log('Cancel reminders error:', e);
+    await Promise.all([
+      notifee.cancelNotification(`${REMINDER_PREFIX}${taskId}`),
+      notifee.cancelNotification(`${LEGACY_TIMER_PREFIX}${taskId}`),
+      ...Array.from({ length: 6 }, (_, index) =>
+        notifee.cancelNotification(`task-${taskId}-${index + 1}`),
+      ),
+    ]);
+  } catch (error) {
+    console.warn('Could not cancel task reminder:', error);
   }
+}
+
+export async function cancelAllTaskReminders() {
+  try {
+    const triggerIds = await notifee.getTriggerNotificationIds();
+    await Promise.all(
+      triggerIds
+        .filter(
+          id =>
+            id.startsWith(REMINDER_PREFIX) ||
+            id.startsWith(LEGACY_TIMER_PREFIX) ||
+            id.startsWith('task-'),
+        )
+        .map(id => notifee.cancelNotification(id)),
+    );
+    await notifee.cancelAllNotifications();
+  } catch (error) {
+    console.warn('Could not clear notifications:', error);
+  }
+}
+
+export async function syncTaskReminders(tasks = [], enabled) {
+  if (!enabled) {
+    await cancelAllTaskReminders();
+    return;
+  }
+  if (!(await requestNotificationPermission())) return;
+
+  const channelId = await ensureChannel();
+  const schedulable = tasks
+    .filter(
+      task =>
+        task?._id &&
+        !task.completed &&
+        getReminderTimestamp(task) > Date.now(),
+    )
+    .sort((a, b) => getReminderTimestamp(a) - getReminderTimestamp(b))
+    .slice(0, 50);
+  const wantedIds = new Set(
+    schedulable.map(task => `${REMINDER_PREFIX}${task._id}`),
+  );
+  const triggerIds = await notifee.getTriggerNotificationIds();
+
+  await Promise.all(
+    triggerIds
+      .filter(
+        id =>
+          (id.startsWith(REMINDER_PREFIX) && !wantedIds.has(id)) ||
+          id.startsWith(LEGACY_TIMER_PREFIX),
+      )
+      .map(id => notifee.cancelNotification(id)),
+  );
+  await Promise.all(schedulable.map(task => createTaskReminder(task, channelId)));
 }

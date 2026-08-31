@@ -32,16 +32,39 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB file limit
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB image limit
+});
+
+const libraryStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async () => ({
+    folder: 'medi_app_library',
+    resource_type: 'auto',
+  }),
+});
+
+const libraryUpload = multer({
+  storage: libraryStorage,
+  limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    const supported =
+      file.mimetype?.startsWith('video/') ||
+      file.mimetype?.startsWith('audio/');
+    callback(
+      supported ? null : new Error('Only video and audio files are supported'),
+      supported,
+    );
+  },
 });
 
 // All media routes require JWT authentication
 router.use(auth);
 
-async function destroyCloudinaryAsset(publicId) {
+async function destroyCloudinaryAsset(publicId, resourceType = 'image') {
   if (!publicId) return;
   const result = await cloudinary.uploader.destroy(publicId, {
     invalidate: true,
+    resource_type: resourceType,
   });
   if (!['ok', 'not found'].includes(result?.result)) {
     throw new Error('Cloudinary could not delete the asset');
@@ -76,6 +99,45 @@ async function replaceTaskImageReferences(userId, oldUrl, newUrl = '') {
     }),
   );
 }
+
+// POST /api/media/library/upload
+router.post('/library/upload', (req, res, next) => {
+  libraryUpload.single('file')(req, res, error => {
+    if (error) {
+      return res.status(400).json({ message: error.message || 'Media upload failed' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  const publicId = req.file?.filename || req.file?.public_id;
+  const mediaUrl = req.file?.path || req.file?.secure_url;
+  try {
+    if (!req.file || !publicId || !mediaUrl) {
+      return res.status(400).json({ message: 'Please select a video or audio file' });
+    }
+    const mimeType = req.file.mimetype || '';
+    const mediaType = mimeType.startsWith('audio/') ? 'audio' : 'video';
+    const media = await Media.create({
+      userId: req.user._id,
+      cloudinaryPublicId: publicId,
+      imageUrl: mediaUrl,
+      mediaUrl,
+      mediaType,
+      mimeType,
+      originalName: req.file.originalname || '',
+      resourceType: 'video',
+      bytes: Number(req.file.size) || 0,
+      title: req.body.title ? req.body.title.trim() : '',
+      kind: 'library',
+    });
+    res.status(201).json(media);
+  } catch (error) {
+    if (publicId) {
+      await destroyCloudinaryAsset(publicId, 'video').catch(() => {});
+    }
+    res.status(500).json({ message: error.message || 'Media upload failed' });
+  }
+});
 
 // ================= 1. UPLOAD MEDIA =================
 // POST /api/media/upload
@@ -220,11 +282,14 @@ router.delete('/:id', async (req, res) => {
 
     // 1. Destroy asset in Cloudinary
     try {
-      await destroyCloudinaryAsset(media.cloudinaryPublicId);
-      console.log(`🗑️ Removed from Cloudinary: ${media.cloudinaryPublicId}`);
+      await destroyCloudinaryAsset(
+        media.cloudinaryPublicId,
+        media.resourceType || (media.mediaType === 'image' ? 'image' : 'video'),
+      );
+      console.log(`Removed from Cloudinary: ${media.cloudinaryPublicId}`);
     } catch (cErr) {
       return res.status(502).json({
-        message: 'Cloudinary image could not be deleted. Please try again.',
+        message: 'Cloudinary media could not be deleted. Please try again.',
       });
     }
 

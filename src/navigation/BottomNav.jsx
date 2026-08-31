@@ -3,7 +3,8 @@ import { Text, TouchableOpacity, View } from 'react-native';
 
 const tabs = [
   ['home', '⌂', 'Home'],
-  ['projects', '▦', 'Projects'],
+  ['projects', '◇', 'Projects'],
+  ['media', '♫', 'Media'],
   ['profile', '○', 'Profile'],
 ];
 
@@ -17,14 +18,12 @@ export default function BottomNav({ active, onChange }) {
           onPress={() => onChange(key)}
         >
           <Text
-            className={`text-2xl ${active === key ? 'text-brand' : 'text-[#aaa5b5]'
-              }`}
+            className={`text-2xl ${active === key ? 'text-brand' : 'text-[#aaa5b5]'}`}
           >
             {icon}
           </Text>
           <Text
-            className={`text-[10px] font-semibold mt-1 ${active === key ? 'text-brand' : 'text-[#aaa5b5]'
-              }`}
+            className={`mt-1 text-[10px] font-semibold ${active === key ? 'text-brand' : 'text-[#aaa5b5]'}`}
           >
             {label}
           </Text>

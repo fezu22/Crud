@@ -4,6 +4,10 @@ const Task = require('../models/Task');
 const Media = require('../models/Media');
 const cloudinary = require('cloudinary').v2;
 const auth = require('../middleware/auth');
+const {
+  buildTaskCreatePayload,
+  pickTaskUpdates,
+} = require('../utils/taskPayload');
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -77,40 +81,35 @@ router.get('/:id', async (req, res) => {
 // POST - create a new task for logged-in user
 router.post('/', async (req, res) => {
   try {
-    const { title, description, imageUrl, imageUrls = [], dueDate, durationMinutes, priority, category, projectId, subtasks } = req.body;
-
-    if ((!title || title.trim() === '') && !imageUrl && imageUrls.length === 0) {
+    const imageUrls = Array.isArray(req.body.imageUrls)
+      ? req.body.imageUrls
+      : [];
+    if (
+      (!req.body.title || req.body.title.trim() === '') &&
+      !req.body.imageUrl &&
+      imageUrls.length === 0
+    ) {
       return res.status(400).json({ message: 'Task text or image is required' });
     }
 
-    const task = await Task.create({
-      user: req.user._id,
-      title: title ? title.trim() : '',
-      description: description ? description.trim() : '',
-      imageUrl: imageUrl || '',
-      imageUrls: Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : [],
-      dueDate: dueDate || null,
-      durationMinutes: durationMinutes ?? 30,
-      priority: priority || 'Medium',
-      category: category || 'Personal',
-      projectId: projectId || null,
-      subtasks: Array.isArray(subtasks) ? subtasks : [],
-    });
+    const task = await Task.create(
+      buildTaskCreatePayload(req.body, req.user._id),
+    );
 
     res.status(201).json(task);
   } catch (err) {
-    console.error('❌ Error creating task:', err);
-    res.status(500).json({ message: err.message || 'Failed to create task' });
+    console.error('Error creating task:', err);
+    res
+      .status(err.statusCode || 500)
+      .json({ message: err.message || 'Failed to create task' });
   }
 });
 
 // PUT - update an existing task (ensuring ownership)
 router.put('/:id', async (req, res) => {
   try {
-    const allowedFields = ['title', 'description', 'imageUrl', 'imageUrls', 'completed', 'dueDate', 'durationMinutes', 'priority', 'category', 'projectId', 'subtasks'];
-    const updates = Object.fromEntries(
-      Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
-    );
+    const updates = pickTaskUpdates(req.body);
+
 
     const existingTask = await Task.findOne({
       _id: req.params.id,
@@ -132,7 +131,7 @@ router.put('/:id', async (req, res) => {
     const task = await Task.findOneAndUpdate(
       { _id: req.params.id, user: req.user._id },
       updates,
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true },
     );
 
     if (!task) {
@@ -141,8 +140,10 @@ router.put('/:id', async (req, res) => {
 
     res.json(task);
   } catch (err) {
-    console.error('❌ Error updating task:', err);
-    res.status(500).json({ message: err.message || 'Failed to update task' });
+    console.error('Error updating task:', err);
+    res
+      .status(err.statusCode || 500)
+      .json({ message: err.message || 'Failed to update task' });
   }
 });
 

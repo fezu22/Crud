@@ -61,6 +61,22 @@ export default function TaskDetailModal({
               </Text>
             </View>
           ) : null}
+          {task.reminderAt ? (
+            <View className="mt-3 rounded-2xl bg-[#eeeaff] p-4">
+              <Text className="text-[10px] font-extrabold tracking-widest text-brand">
+                REMINDER
+              </Text>
+              <Text className="mt-1 font-bold text-ink">
+                {new Date(task.reminderAt).toLocaleString([], {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}
+              </Text>
+              <Text className="mt-1 text-xs text-muted">
+                Notification 2 minutes before
+              </Text>
+            </View>
+          ) : null}
           {images.length ? (
             <>
               <Text className="mb-3 mt-6 text-[10px] font-extrabold tracking-widest text-muted">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme } from 'nativewind';
+import { requestNotificationPermission } from '../services/notifications';
 
 const KEY = '@medi_preferences';
 const defaults = { theme: 'light', notifications: true };
@@ -34,7 +35,11 @@ export default function usePreferences() {
       ...preferences,
       theme: preferences.theme === 'dark' ? 'light' : 'dark',
     });
-  const toggleNotifications = () =>
-    update({ ...preferences, notifications: !preferences.notifications });
+  const toggleNotifications = async () => {
+    const enabling = !preferences.notifications;
+    if (enabling && !(await requestNotificationPermission())) return false;
+    await update({ ...preferences, notifications: enabling });
+    return true;
+  };
   return { ...preferences, ready, toggleTheme, toggleNotifications };
 }

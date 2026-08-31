@@ -30,11 +30,7 @@ const TaskSchema = new mongoose.Schema(
       default: false,
     },
     dueDate: { type: Date, default: null },
-    durationMinutes: {
-      type: Number,
-      default: 30,
-      min: 1,
-    },
+    reminderAt: { type: Date, default: null, index: true },
     priority: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
     category: { type: String, enum: ['Personal', 'Work', 'Health', 'Shopping'], default: 'Personal' },
     projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', default: null },

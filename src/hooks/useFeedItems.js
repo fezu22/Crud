@@ -53,6 +53,8 @@ export default function useFeedItems({ tasks, media, search, filter }) {
       item =>
         filter === 'All' &&
         item.kind !== 'taskAttachment' &&
+        item.kind !== 'library' &&
+        (!item.mediaType || item.mediaType === 'image') &&
         !taskImageUrls.has(item.imageUrl) &&
         (!query || item.title?.toLowerCase().includes(query)),
     );

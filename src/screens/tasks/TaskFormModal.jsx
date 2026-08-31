@@ -12,26 +12,18 @@ import {
 import { launchImageLibrary } from 'react-native-image-picker';
 import ModalHeader from '../../components/ModalHeader';
 import DueDatePicker, { formatDueDate } from '../../components/DueDatePicker';
+import TimePickerModal from '../../components/TimePickerModal';
+import {
+  createReminderAt,
+  formatTaskTime,
+  toLocalDateValue,
+  toLocalTimeValue,
+} from '../../utils/taskReminder';
 
 const values = {
   priority: ['Low', 'Medium', 'High'],
   category: ['Personal', 'Work', 'Health', 'Shopping'],
 };
-
-const durationOptions = [
-  { label: '5 min', value: 5 },
-  { label: '10 min', value: 10 },
-  { label: '15 min', value: 15 },
-  { label: '30 min', value: 30 },
-  { label: '1 hour', value: 60 },
-  { label: '2 hours', value: 120 },
-  { label: 'Custom', value: 'custom' },
-];
-
-function getTodayString() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
 
 const Field = ({ label, children }) => (
   <View>
@@ -69,14 +61,15 @@ export default function TaskFormModal({
   const [category, setCategory] = useState('Personal');
   const [projectId, setProjectId] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [duration, setDuration] = useState(30);
-  const [customDuration, setCustomDuration] = useState('');
+  const [dueTime, setDueTime] = useState('');
+  const [reminderError, setReminderError] = useState('');
   const [sub, setSub] = useState('');
   const [subtasks, setSubtasks] = useState([]);
   const [images, setImages] = useState([]);
   const [existingImages, setExistingImages] = useState([]);
   const [deletingUrl, setDeletingUrl] = useState('');
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -85,14 +78,9 @@ export default function TaskFormModal({
       setPriority(task?.priority || 'Medium');
       setCategory(task?.category || 'Personal');
       setProjectId(task?.projectId?._id || task?.projectId || project?._id || '');
-      setDueDate(
-        task?.dueDate
-          ? new Date(task.dueDate).toISOString().slice(0, 10)
-          : task ? '' : getTodayString()
-      );
-      const saved = task?.durationMinutes || 30;
-      setDuration([5, 10, 15, 30, 60, 120].includes(saved) ? saved : 'custom');
-      setCustomDuration([5, 10, 15, 30, 60, 120].includes(saved) ? '' : String(saved));
+      setDueDate(toLocalDateValue(task?.dueDate || task?.reminderAt));
+      setDueTime(toLocalTimeValue(task?.reminderAt));
+      setReminderError('');
       setSubtasks(task?.subtasks || []);
       setExistingImages(task?.imageUrls?.length ? task.imageUrls : task?.imageUrl ? [task.imageUrl] : []);
       setImages([]);
@@ -100,7 +88,6 @@ export default function TaskFormModal({
     }
   }, [visible, task, project]);
 
-  const finalDuration = duration === 'custom' ? Math.max(1, parseInt(customDuration, 10) || 1) : duration;
 
   const pick = async () => {
     const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 8 });
@@ -112,6 +99,28 @@ export default function TaskFormModal({
       setSubtasks(curr => [...curr, { label: sub.trim(), done: false }]);
       setSub('');
     }
+  };
+
+  const submitTask = () => {
+    const reminder = createReminderAt(dueDate, dueTime);
+    if (reminder.error) {
+      setReminderError(reminder.error);
+      return;
+    }
+    const reminderAt = reminder.value;
+    setReminderError('');
+    onSave({
+      title: title.trim(),
+      description: description.trim(),
+      priority,
+      category,
+      projectId: projectId || null,
+      dueDate: dueDate || null,
+      reminderAt,
+      subtasks,
+      newImages: images,
+      imageUrls: existingImages,
+    });
   };
 
   const removeExistingImage = async (uri) => {
@@ -174,57 +183,62 @@ export default function TaskFormModal({
             </ScrollView>
           </Field>
 
-          <Field label="DURATION (for reminders)">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {durationOptions.map(opt => (
-                <Choice
-                  key={opt.value}
-                  label={opt.label}
-                  active={duration === opt.value}
-                  onPress={() => {
-                    setDuration(opt.value);
-                    if (opt.value !== 'custom') setCustomDuration('');
-                  }}
-                />
-              ))}
-            </ScrollView>
 
-            {duration === 'custom' && (
-              <View className="mt-3 h-14 flex-row items-center rounded-2xl border border-line bg-surface px-4">
-                <TextInput
-                  className="flex-1 text-ink"
-                  value={customDuration}
-                  onChangeText={setCustomDuration}
-                  placeholder="Enter minutes"
-                  placeholderTextColor="#817C94"
-                  keyboardType="number-pad"
-                />
-                <Text className="text-sm font-bold text-muted">min</Text>
-              </View>
-            )}
-
-            <Text className="mt-2 text-xs text-muted">
-              Selected: {finalDuration} min {'\u2192'} reminder after {finalDuration} min
-            </Text>
-          </Field>
-
-          <Field label="DUE DATE">
+          <Field label="DATE (optional)">
             <TouchableOpacity
               className="h-14 flex-row items-center justify-between rounded-2xl border border-line bg-surface px-4"
               onPress={() => setDatePickerOpen(true)}
             >
-              <Text style={!dueDate ? { color: '#817C94' } : undefined} className={dueDate ? 'text-ink' : ''}>
-                {dueDate ? formatDueDate(dueDate) : 'Select a due date'}
+              <Text className={dueDate ? 'text-ink' : 'text-muted'}>
+                {dueDate ? formatDueDate(dueDate) : 'Select a date'}
               </Text>
-              <Text className="text-lg text-muted">📅</Text>
+              <Text className="text-lg text-muted">▣</Text>
             </TouchableOpacity>
             {dueDate ? (
-              <TouchableOpacity className="mt-2 self-start" onPress={() => setDueDate('')}>
-                <Text className="text-xs font-bold text-brand">Clear due date</Text>
+              <TouchableOpacity
+                className="mt-2 self-start"
+                onPress={() => {
+                  setDueDate('');
+                  setDueTime('');
+                  setReminderError('');
+                }}
+              >
+                <Text className="text-xs font-bold text-brand">Clear date</Text>
               </TouchableOpacity>
             ) : null}
           </Field>
 
+          <Field label="REMINDER TIME (optional)">
+            <TouchableOpacity
+              className={`h-14 flex-row items-center justify-between rounded-2xl border border-line bg-surface px-4 ${!dueDate ? 'opacity-40' : ''}`}
+              disabled={!dueDate}
+              onPress={() => setTimePickerOpen(true)}
+            >
+              <Text className={dueTime ? 'text-ink' : 'text-muted'}>
+                {dueTime ? formatTaskTime(dueTime) : dueDate ? 'Select a time' : 'Select a date first'}
+              </Text>
+              <Text className="text-lg text-muted">◷</Text>
+            </TouchableOpacity>
+            {dueTime ? (
+              <>
+                <Text className="mt-2 text-xs text-muted">
+                  Notification will arrive 2 minutes before this time.
+                </Text>
+                <TouchableOpacity
+                  className="mt-2 self-start"
+                  onPress={() => {
+                    setDueTime('');
+                    setReminderError('');
+                  }}
+                >
+                  <Text className="text-xs font-bold text-brand">Remove reminder time</Text>
+                </TouchableOpacity>
+              </>
+            ) : null}
+            {reminderError ? (
+              <Text className="mt-2 text-xs font-bold text-red-500">{reminderError}</Text>
+            ) : null}
+          </Field>
           <Field label="SUBTASKS">
             <View className="h-14 flex-row items-center rounded-2xl border border-line px-4">
               <TextInput
@@ -300,20 +314,7 @@ export default function TaskFormModal({
           <TouchableOpacity
             className={`h-14 items-center justify-center rounded-2xl bg-brand ${!title.trim() || saving ? 'opacity-40' : ''}`}
             disabled={!title.trim() || saving}
-            onPress={() =>
-              onSave({
-                title: title.trim(),
-                description: description.trim(),
-                priority,
-                category,
-                projectId: projectId || null,
-                dueDate: dueDate || null,
-                durationMinutes: finalDuration,
-                subtasks,
-                newImages: images,
-                imageUrls: existingImages,
-              })
-            }
+            onPress={submitTask}
           >
             {saving ? (
               <ActivityIndicator color="#fff" />
@@ -322,6 +323,17 @@ export default function TaskFormModal({
             )}
           </TouchableOpacity>
         </View>
+
+        <TimePickerModal
+          visible={timePickerOpen}
+          value={dueTime}
+          onClose={() => setTimePickerOpen(false)}
+          onSelect={value => {
+            setDueTime(value);
+            setReminderError('');
+            setTimePickerOpen(false);
+          }}
+        />
 
         <DueDatePicker
           visible={datePickerOpen}
