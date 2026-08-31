@@ -163,6 +163,7 @@ export default function HomeScreen({
   onRefresh,
   onTask,
   onDeleteMedia,
+  onAddTask,
 }) {
   const stats = [
     [tasks.length, 'Total'],
@@ -349,6 +350,13 @@ export default function HomeScreen({
           />
         )}
       </View>
+      <TouchableOpacity
+        className="absolute h-[58px] w-[58px] items-center justify-center rounded-full bg-brand shadow-lg z-20"
+        style={{ right: 20, bottom: 20 }}
+        onPress={onAddTask}
+      >
+        <Text className="text-3xl font-light text-white">＋</Text>
+      </TouchableOpacity>
     </View>
   );
 }

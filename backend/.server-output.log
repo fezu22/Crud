@@ -1,0 +1,58 @@
+◇ injected env (7) from .env // tip: ⌘ override existing { override: true }
+🔍 ENV CHECK -> Cloud Name: bxjlok4w
+🔍 [mediaRoutes] CLOUDINARY_CLOUD_NAME: bxjlok4w
+🔍 [mediaRoutes] CLOUDINARY_API_KEY: ✅ Set
+🔍 [mediaRoutes] CLOUDINARY_API_SECRET: ✅ Set
+✅ Connected to MongoDB at: mongodb://127.0.0.1:27017/crudapp
+🚀 Server running on port 5000 (http://localhost:5000)
+[2026-08-31T08:20:47.012Z] DELETE /api/tasks/6a9539379e06c7e5200faa91
+[2026-08-31T08:21:21.484Z] GET /api/media/my-uploads
+[2026-08-31T08:21:21.495Z] GET /api/tasks
+[2026-08-31T08:21:21.499Z] GET /api/projects
+[2026-08-31T08:21:47.009Z] POST /api/tasks
+[2026-08-31T08:22:05.584Z] GET /api/media/my-uploads
+[2026-08-31T08:22:05.587Z] GET /api/tasks
+[2026-08-31T08:22:05.591Z] GET /api/projects
+[2026-08-31T08:22:09.377Z] DELETE /api/tasks/6a95399b2bf4acdc63b0927f
+[2026-08-31T08:22:24.337Z] POST /api/media/upload
+[2026-08-31T08:22:24.343Z] POST /api/media/upload
+[2026-08-31T08:22:24.364Z] POST /api/media/upload
+[2026-08-31T08:22:24.367Z] POST /api/media/upload
+[2026-08-31T08:22:24.383Z] POST /api/media/upload
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a9539c22bf4acdc63b09280)
+[2026-08-31T08:22:26.252Z] POST /api/media/upload
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a9539c22bf4acdc63b09281)
+[2026-08-31T08:22:26.314Z] POST /api/media/upload
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a9539c22bf4acdc63b09282)
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a9539c22bf4acdc63b09283)
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a9539c32bf4acdc63b09284)
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a9539c32bf4acdc63b09285)
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a9539c52bf4acdc63b09286)
+[2026-08-31T08:22:29.576Z] POST /api/tasks
+[2026-08-31T08:22:42.084Z] DELETE /api/tasks/6a9539c52bf4acdc63b09287
+[2026-08-31T08:22:49.872Z] GET /api/tasks
+[2026-08-31T08:22:49.893Z] GET /api/media/my-uploads
+[2026-08-31T08:22:49.895Z] GET /api/projects
+[2026-08-31T08:23:41.828Z] POST /api/auth/login
+[2026-08-31T08:23:42.205Z] GET /api/tasks
+[2026-08-31T08:23:42.214Z] GET /api/projects
+[2026-08-31T08:23:42.215Z] GET /api/media/my-uploads
+[2026-08-31T08:25:35.836Z] POST /api/media/upload
+[2026-08-31T08:25:35.845Z] POST /api/media/upload
+[2026-08-31T08:25:35.847Z] POST /api/media/upload
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a953a812bf4acdc63b09288)
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a953a812bf4acdc63b09289)
+✅ Media created in MongoDB for user: 6a928d95a11a685ae4d41474 (6a953a822bf4acdc63b0928a)
+[2026-08-31T08:25:38.403Z] POST /api/tasks
+[2026-08-31T08:28:22.396Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:24.001Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:25.521Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:25.669Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:30.092Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:30.644Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:44.349Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:44.738Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:45.006Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:45.287Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:46.141Z] PUT /api/tasks/6a953a822bf4acdc63b0928b
+[2026-08-31T08:28:46.825Z] PUT /api/tasks/6a953a822bf4acdc63b0928b

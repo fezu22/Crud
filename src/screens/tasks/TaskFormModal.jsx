@@ -11,10 +11,20 @@ import {
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import ModalHeader from '../../components/ModalHeader';
+import DueDatePicker, {
+  formatDueDate,
+} from '../../components/DueDatePicker';
 const values = {
   priority: ['Low', 'Medium', 'High'],
   category: ['Personal', 'Work', 'Health', 'Shopping'],
 };
+function getTodayString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 const Field = ({ label, children }) => (
   <View>
     <Text className="mb-2 mt-5 text-[10px] font-extrabold tracking-widest text-muted">
@@ -25,9 +35,8 @@ const Field = ({ label, children }) => (
 );
 const Choice = ({ label, active, onPress }) => (
   <TouchableOpacity
-    className={`mr-2 rounded-xl border px-4 py-2.5 ${
-      active ? 'border-brand bg-brand' : 'border-line bg-canvas'
-    }`}
+    className={`mr-2 rounded-xl border px-4 py-2.5 ${active ? 'border-brand bg-brand' : 'border-line bg-canvas'
+      }`}
     onPress={onPress}
   >
     <Text
@@ -45,6 +54,7 @@ export default function TaskFormModal({
   saving,
   onClose,
   onSave,
+  onDeleteImage,
 }) {
   const [title, setTitle] = useState(''),
     [description, setDescription] = useState(''),
@@ -54,7 +64,10 @@ export default function TaskFormModal({
     [dueDate, setDueDate] = useState(''),
     [sub, setSub] = useState(''),
     [subtasks, setSubtasks] = useState([]),
-    [images, setImages] = useState([]);
+    [images, setImages] = useState([]),
+    [existingImages, setExistingImages] = useState([]),
+    [deletingUrl, setDeletingUrl] = useState(''),
+    [datePickerOpen, setDatePickerOpen] = useState(false);
   useEffect(() => {
     if (visible) {
       setTitle(task?.title || '');
@@ -65,17 +78,25 @@ export default function TaskFormModal({
         task?.projectId?._id || task?.projectId || project?._id || '',
       );
       setDueDate(
-        task?.dueDate ? new Date(task.dueDate).toISOString().slice(0, 10) : '',
+        task?.dueDate
+          ? new Date(task.dueDate).toISOString().slice(0, 10)
+          : task
+            ? '' // editing an existing task with no due date: leave blank
+            : getTodayString(), // brand new task: default to today
       );
       setSubtasks(task?.subtasks || []);
+      setExistingImages(
+        task?.imageUrls?.length
+          ? task.imageUrls
+          : task?.imageUrl
+            ? [task.imageUrl]
+            : [],
+      );
       setImages([]);
+      setDeletingUrl('');
     }
   }, [visible, task, project]);
-  const old = task?.imageUrls?.length
-    ? task.imageUrls
-    : task?.imageUrl
-    ? [task.imageUrl]
-    : [];
+  const old = existingImages;
   const pick = async () => {
     const result = await launchImageLibrary({
       mediaType: 'photo',
@@ -91,6 +112,18 @@ export default function TaskFormModal({
     if (sub.trim()) {
       setSubtasks(current => [...current, { label: sub.trim(), done: false }]);
       setSub('');
+    }
+  };
+  const removeExistingImage = async uri => {
+    if (deletingUrl) return;
+    setDeletingUrl(uri);
+    try {
+      const deleted = await onDeleteImage(uri);
+      if (deleted) {
+        setExistingImages(current => current.filter(value => value !== uri));
+      }
+    } finally {
+      setDeletingUrl('');
     }
   };
   return (
@@ -156,13 +189,28 @@ export default function TaskFormModal({
             </ScrollView>
           </Field>
           <Field label="DUE DATE">
-            <TextInput
-              className="h-14 rounded-2xl border border-line bg-surface px-4 text-ink"
-              value={dueDate}
-              onChangeText={setDueDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#817C94"
-            />
+            <TouchableOpacity
+              className="h-14 flex-row items-center justify-between rounded-2xl border border-line bg-surface px-4"
+              onPress={() => setDatePickerOpen(true)}
+            >
+              <Text
+                style={!dueDate ? { color: '#817C94' } : undefined}
+                className={dueDate ? 'text-ink' : ''}
+              >
+                {dueDate ? formatDueDate(dueDate) : 'Select a due date'}
+              </Text>
+              <Text className="text-lg text-muted">📅</Text>
+            </TouchableOpacity>
+            {dueDate ? (
+              <TouchableOpacity
+                className="mt-2 self-start"
+                onPress={() => setDueDate('')}
+              >
+                <Text className="text-xs font-bold text-brand">
+                  Clear due date
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </Field>
           <Field label="SUBTASKS">
             <View className="h-14 flex-row items-center rounded-2xl border border-line px-4">
@@ -212,15 +260,45 @@ export default function TaskFormModal({
                   {old.length + images.length} photos in this task
                 </Text>
                 <View className="flex-row flex-wrap">
-                  {[...old, ...images.map(item => item.uri)].map(
-                    (uri, index) => (
+                  {old.map((uri, index) => (
+                    <View key={uri + index} className="relative">
                       <Image
-                        key={uri + index}
                         source={{ uri }}
                         className="mb-2 mr-2 h-24 w-28 rounded-xl"
                       />
-                    ),
-                  )}
+                      <TouchableOpacity
+                        disabled={!!deletingUrl}
+                        className="absolute right-3 top-1 h-7 w-7 items-center justify-center rounded-full bg-red-500"
+                        onPress={() => removeExistingImage(uri)}
+                      >
+                        {deletingUrl === uri ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text className="font-extrabold text-white">×</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {images.map((item, index) => (
+                    <View key={(item.uri || '') + index} className="relative">
+                      <Image
+                        source={{ uri: item.uri }}
+                        className="mb-2 mr-2 h-24 w-28 rounded-xl"
+                      />
+                      <TouchableOpacity
+                        className="absolute right-3 top-1 h-7 w-7 items-center justify-center rounded-full bg-red-500"
+                        onPress={() =>
+                          setImages(current =>
+                            current.filter(
+                              (_, imageIndex) => imageIndex !== index,
+                            ),
+                          )
+                        }
+                      >
+                        <Text className="font-extrabold text-white">×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
                 </View>
               </View>
             ) : null}
@@ -228,9 +306,8 @@ export default function TaskFormModal({
         </ScrollView>
         <View className="absolute bottom-0 left-0 right-0 border-t border-line bg-canvas p-4">
           <TouchableOpacity
-            className={`h-14 items-center justify-center rounded-2xl bg-brand ${
-              !title.trim() || saving ? 'opacity-40' : ''
-            }`}
+            className={`h-14 items-center justify-center rounded-2xl bg-brand ${!title.trim() || saving ? 'opacity-40' : ''
+              }`}
             disabled={!title.trim() || saving}
             onPress={() =>
               onSave({
@@ -255,6 +332,15 @@ export default function TaskFormModal({
             )}
           </TouchableOpacity>
         </View>
+        <DueDatePicker
+          visible={datePickerOpen}
+          value={dueDate}
+          onClose={() => setDatePickerOpen(false)}
+          onSelect={value => {
+            setDueDate(value);
+            setDatePickerOpen(false);
+          }}
+        />
       </View>
     </Modal>
   );

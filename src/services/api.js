@@ -211,6 +211,19 @@ export async function deleteMedia(id, token) {
   return data;
 }
 
+export async function deleteMediaByUrl(imageUrl, token) {
+  const response = await fetch(`${API_BASE_URL}/media/by-url`, {
+    method: 'DELETE',
+    headers: getHeaders(token),
+    body: JSON.stringify({ imageUrl }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to delete image from Cloudinary');
+  }
+  return data;
+}
+
 export async function updateMedia(id, { title, image }, token) {
   const formData = new FormData();
   formData.append('title', title || '');

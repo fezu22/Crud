@@ -9,16 +9,22 @@ import {
   View,
 } from 'react-native';
 import ModalHeader from '../../components/ModalHeader';
+import DueDatePicker, {
+  formatDueDate,
+} from '../../components/DueDatePicker';
 const palette = ['#6750E8', '#F08A74', '#47B8A5', '#E0A93A', '#7994E8'];
 export default function ProjectFormModal({ visible, saving, onClose, onSave }) {
   const [name, setName] = useState(''),
     [description, setDescription] = useState(''),
-    [color, setColor] = useState(palette[0]);
+    [color, setColor] = useState(palette[0]),
+    [dueDate, setDueDate] = useState(''),
+    [datePickerOpen, setDatePickerOpen] = useState(false);
   useEffect(() => {
     if (visible) {
       setName('');
       setDescription('');
       setColor(palette[0]);
+      setDueDate('');
     }
   }, [visible]);
   return (
@@ -55,6 +61,31 @@ export default function ProjectFormModal({ visible, saving, onClose, onSave }) {
             onChangeText={setDescription}
             multiline
           />
+          <Text className="mb-2 mt-5 text-[10px] font-extrabold tracking-widest text-muted">
+            DUE DATE
+          </Text>
+          <TouchableOpacity
+            className="h-14 flex-row items-center justify-between rounded-2xl border border-line bg-surface px-4"
+            onPress={() => setDatePickerOpen(true)}
+          >
+            <Text
+              className={dueDate ? 'text-ink' : 'text-muted'}
+              style={!dueDate ? { color: '#817C94' } : undefined}
+            >
+              {dueDate ? formatDueDate(dueDate) : 'Select a due date'}
+            </Text>
+            <Text className="text-lg text-muted">📅</Text>
+          </TouchableOpacity>
+          {dueDate ? (
+            <TouchableOpacity
+              className="mt-2 self-start"
+              onPress={() => setDueDate('')}
+            >
+              <Text className="text-xs font-bold text-brand">
+                Clear due date
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           <Text className="mb-3 mt-5 text-[10px] font-extrabold tracking-widest text-muted">
             COLOR
           </Text>
@@ -62,9 +93,8 @@ export default function ProjectFormModal({ visible, saving, onClose, onSave }) {
             {palette.map(value => (
               <TouchableOpacity
                 key={value}
-                className={`mr-3 h-11 w-11 rounded-2xl ${
-                  value === color ? 'border-4 border-white' : ''
-                }`}
+                className={`mr-3 h-11 w-11 rounded-2xl ${value === color ? 'border-4 border-white' : ''
+                  }`}
                 style={{ backgroundColor: value }}
                 onPress={() => setColor(value)}
               />
@@ -73,15 +103,15 @@ export default function ProjectFormModal({ visible, saving, onClose, onSave }) {
         </ScrollView>
         <View className="absolute bottom-0 left-0 right-0 border-t border-line bg-canvas p-4">
           <TouchableOpacity
-            className={`h-14 items-center justify-center rounded-2xl bg-brand ${
-              !name.trim() || saving ? 'opacity-40' : ''
-            }`}
+            className={`h-14 items-center justify-center rounded-2xl bg-brand ${!name.trim() || saving ? 'opacity-40' : ''
+              }`}
             disabled={!name.trim() || saving}
             onPress={() =>
               onSave({
                 name: name.trim(),
                 description: description.trim(),
                 color,
+                dueDate: dueDate || null,
               })
             }
           >
@@ -92,6 +122,15 @@ export default function ProjectFormModal({ visible, saving, onClose, onSave }) {
             )}
           </TouchableOpacity>
         </View>
+        <DueDatePicker
+          visible={datePickerOpen}
+          value={dueDate}
+          onClose={() => setDatePickerOpen(false)}
+          onSelect={value => {
+            setDueDate(value);
+            setDatePickerOpen(false);
+          }}
+        />
       </View>
     </Modal>
   );

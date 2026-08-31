@@ -44,6 +44,7 @@ import {
   uploadMedia,
   getMyMedia,
   deleteMedia,
+  deleteMediaByUrl,
   getProjects,
   createProject,
 } from './src/services/api';
@@ -339,10 +340,14 @@ export default function App() {
       const saved = editingTaskId
         ? await updateTask(editingTaskId, payload, token)
         : await createTask(payload, token);
-      if (editingTaskId) replaceTask(saved);
-      else setTasks(items => [saved, ...items]);
+      if (editingTaskId) {
+        // Editing an existing task: refresh the open detail view.
+        replaceTask(saved);
+      } else {
+        // Creating a new task: just add it to the list, stay on Home.
+        setTasks(items => [saved, ...items]);
+      }
       closeTaskForm();
-      setSelectedTask(saved);
     } catch (error) {
       showError('Could not save task', error);
     } finally {
@@ -411,6 +416,45 @@ export default function App() {
       },
     });
   }
+  async function removeTaskImage(imageUrl) {
+    try {
+      await deleteMediaByUrl(imageUrl, token);
+      setMedia(items => items.filter(item => item.imageUrl !== imageUrl));
+      setTasks(items =>
+        items.map(task => {
+          const imageUrls = (task.imageUrls || []).filter(
+            url => url !== imageUrl,
+          );
+          return {
+            ...task,
+            imageUrls,
+            imageUrl:
+              task.imageUrl === imageUrl
+                ? imageUrls[0] || ''
+                : task.imageUrl,
+          };
+        }),
+      );
+      setSelectedTask(current => {
+        if (!current) return current;
+        const imageUrls = (current.imageUrls || []).filter(
+          url => url !== imageUrl,
+        );
+        return {
+          ...current,
+          imageUrls,
+          imageUrl:
+            current.imageUrl === imageUrl
+              ? imageUrls[0] || ''
+              : current.imageUrl,
+        };
+      });
+      return true;
+    } catch (error) {
+      showError('Could not delete image', error);
+      return false;
+    }
+  }
   async function saveProject(form) {
     setSaving(true);
     try {
@@ -467,6 +511,7 @@ export default function App() {
             onRefresh={refresh}
             onTask={setSelectedTask}
             onDeleteMedia={removeMedia}
+            onAddTask={() => openTaskForm()}
           />
         ) : activeTab === 'projects' ? (
           <ProjectsScreen
@@ -494,13 +539,6 @@ export default function App() {
           active={activeTab}
           onChange={setActiveTab}
         />
-        <TouchableOpacity
-          className="absolute h-[58px] w-[58px] items-center justify-center rounded-full bg-brand shadow-lg z-20"
-          style={{ right: 20, bottom: 76 }}
-          onPress={() => openTaskForm()}
-        >
-          <Text className="text-3xl font-light text-white">＋</Text>
-        </TouchableOpacity>
         <ProjectDetailModal
           visible={projectDetailOpen}
           project={selectedProject}
@@ -526,6 +564,7 @@ export default function App() {
           saving={saving}
           onClose={closeTaskForm}
           onSave={saveTask}
+          onDeleteImage={removeTaskImage}
         />
         <ProjectFormModal
           visible={projectFormOpen}

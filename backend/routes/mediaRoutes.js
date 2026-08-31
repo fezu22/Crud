@@ -48,6 +48,14 @@ async function destroyCloudinaryAsset(publicId) {
   }
 }
 
+function getPublicIdFromCloudinaryUrl(imageUrl) {
+  if (!imageUrl) return '';
+  const match = decodeURIComponent(imageUrl).match(
+    /\/upload\/(?:[^/]+\/)*v\d+\/(medi_app_uploads\/[^?#]+?)\.[a-z0-9]+(?:\?|$)/i,
+  );
+  return match?.[1] || '';
+}
+
 async function replaceTaskImageReferences(userId, oldUrl, newUrl = '') {
   if (!oldUrl) return;
   const tasks = await Task.find({
@@ -162,6 +170,36 @@ router.put('/:id', async (req, res, next) => {
     res
       .status(500)
       .json({ message: err.message || 'Failed to update media' });
+  }
+});
+
+router.delete('/by-url', async (req, res) => {
+  try {
+    const imageUrl = req.body?.imageUrl;
+    if (!imageUrl) {
+      return res.status(400).json({ message: 'Image URL is required' });
+    }
+
+    const media = await Media.findOne({
+      userId: req.user._id,
+      imageUrl,
+    });
+    const publicId =
+      media?.cloudinaryPublicId || getPublicIdFromCloudinaryUrl(imageUrl);
+    if (!publicId) {
+      return res.status(404).json({ message: 'Cloudinary image not found' });
+    }
+
+    await destroyCloudinaryAsset(publicId);
+    await replaceTaskImageReferences(req.user._id, imageUrl);
+    if (media) await media.deleteOne();
+
+    res.json({ message: 'Image deleted from Cloudinary', imageUrl });
+  } catch (err) {
+    console.error('Cloudinary URL delete failed:', err);
+    res.status(502).json({
+      message: err.message || 'Cloudinary image could not be deleted',
+    });
   }
 });
 
