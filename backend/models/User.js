@@ -40,6 +40,22 @@ const UserSchema = new mongoose.Schema(
       enum: ['email', 'phone', 'truecaller'],
       default: 'email',
     },
+
+    cloudinaryConnected: {
+      type: Boolean,
+      default: false,
+    },
+
+    cloudinaryCloudName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    cloudinaryConnectedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
