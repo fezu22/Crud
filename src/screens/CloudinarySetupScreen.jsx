@@ -1,6 +1,4 @@
-import React, {
-    useState,
-} from 'react';
+import React, { useState } from 'react';
 
 import {
     ActivityIndicator,
@@ -31,20 +29,13 @@ export default function CloudinarySetupScreen({
     user,
     onConnected,
 }) {
-    const [
-        cloudName,
-        setCloudName,
-    ] = useState('');
+    const [cloudName, setCloudName] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    const [
-        loading,
-        setLoading,
-    ] = useState(false);
-
-    const [
-        error,
-        setError,
-    ] = useState('');
+    // ==============================
+    // CREATE CLOUDINARY ACCOUNT
+    // ==============================
 
     const openSignup = async () => {
         try {
@@ -70,6 +61,10 @@ export default function CloudinarySetupScreen({
         }
     };
 
+    // ==============================
+    // CONNECT CLOUDINARY
+    // ==============================
+
     const handleConnect = async () => {
         const cleanCloudName =
             cloudName.trim();
@@ -78,7 +73,13 @@ export default function CloudinarySetupScreen({
             setError(
                 'Please enter your Cloudinary Cloud Name.',
             );
+            return;
+        }
 
+        if (!token) {
+            setError(
+                'Your Medi login session is missing. Please login again.',
+            );
             return;
         }
 
@@ -86,21 +87,37 @@ export default function CloudinarySetupScreen({
         setError('');
 
         try {
-            // Cloudinary OAuth login
-            await connectCloudinary();
+            // STEP 1:
+            // User logs in / authorizes their own
+            // Cloudinary account.
+            //
+            // IMPORTANT FIX:
+            // pass cleanCloudName here.
+            await connectCloudinary(
+                cleanCloudName,
+            );
 
-            // Medi MongoDB mein connection status save
+            // STEP 2:
+            // Save only connection information
+            // against Medi user in MongoDB.
             const result =
                 await saveCloudinaryConnection(
                     cleanCloudName,
                     token,
                 );
 
-            if (onConnected) {
+            // STEP 3:
+            // Tell App.jsx that setup finished.
+            if (onConnected && result?.user) {
                 await onConnected(
                     result.user,
                 );
             }
+
+            Alert.alert(
+                'Connected',
+                'Your Cloudinary account has been connected successfully.',
+            );
         } catch (err) {
             console.error(
                 'Cloudinary connect error:',
@@ -108,7 +125,7 @@ export default function CloudinarySetupScreen({
             );
 
             setError(
-                err.message ||
+                err?.message ||
                 'Could not connect Cloudinary.',
             );
         } finally {
@@ -137,31 +154,28 @@ export default function CloudinarySetupScreen({
 
                     <Text style={styles.description}>
                         Connect your own Cloudinary
-                        account so your private
-                        images, videos and files can
-                        be stored in your personal
-                        cloud storage.
+                        account so your private images,
+                        videos and files can be stored
+                        in your personal cloud storage.
                     </Text>
 
+                    {/* CREATE ACCOUNT */}
+
                     <View style={styles.infoBox}>
-                        <Text
-                            style={styles.infoTitle}
-                        >
+                        <Text style={styles.infoTitle}>
                             Don't have Cloudinary?
                         </Text>
 
-                        <Text
-                            style={styles.infoText}
-                        >
-                            Create your free
-                            Cloudinary account first.
-                            Then come back to Medi and
-                            connect it.
+                        <Text style={styles.infoText}>
+                            Create your free Cloudinary
+                            account first. Then return
+                            to Medi and connect it.
                         </Text>
 
                         <TouchableOpacity
                             style={styles.outlineButton}
                             onPress={openSignup}
+                            disabled={loading}
                         >
                             <Text
                                 style={
@@ -172,6 +186,8 @@ export default function CloudinarySetupScreen({
                             </Text>
                         </TouchableOpacity>
                     </View>
+
+                    {/* CLOUD NAME */}
 
                     <Text style={styles.label}>
                         Cloudinary Cloud Name
@@ -188,30 +204,30 @@ export default function CloudinarySetupScreen({
                         placeholderTextColor="#999"
                         autoCapitalize="none"
                         autoCorrect={false}
+                        editable={!loading}
                     />
 
                     <Text style={styles.helper}>
                         You can find your Cloud Name
-                        inside the Cloudinary
+                        inside your Cloudinary
                         dashboard.
                     </Text>
 
+                    {/* ERROR */}
+
                     {error ? (
-                        <View
-                            style={styles.errorBox}
-                        >
-                            <Text
-                                style={styles.errorText}
-                            >
+                        <View style={styles.errorBox}>
+                            <Text style={styles.errorText}>
                                 {error}
                             </Text>
                         </View>
                     ) : null}
 
+                    {/* CONNECT BUTTON */}
+
                     <TouchableOpacity
                         style={[
                             styles.connectButton,
-
                             loading &&
                             styles.disabledButton,
                         ]}
@@ -245,188 +261,187 @@ export default function CloudinarySetupScreen({
     );
 }
 
-const styles =
-    StyleSheet.create({
-        container: {
-            flex: 1,
-            backgroundColor: '#F7F7F9',
-        },
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#F7F7F9',
+    },
 
-        scrollContent: {
-            flexGrow: 1,
-            justifyContent: 'center',
-            padding: 20,
-        },
+    scrollContent: {
+        flexGrow: 1,
+        justifyContent: 'center',
+        padding: 20,
+    },
 
-        card: {
-            backgroundColor: '#FFFFFF',
-            borderRadius: 26,
-            padding: 24,
+    card: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 26,
+        padding: 24,
 
-            shadowColor: '#000',
-            shadowOpacity: 0.08,
-            shadowRadius: 15,
-            elevation: 4,
-        },
+        shadowColor: '#000',
+        shadowOpacity: 0.08,
+        shadowRadius: 15,
+        elevation: 4,
+    },
 
-        iconBox: {
-            width: 64,
-            height: 64,
+    iconBox: {
+        width: 64,
+        height: 64,
 
-            borderRadius: 20,
+        borderRadius: 20,
 
-            backgroundColor: '#6657E8',
+        backgroundColor: '#6657E8',
 
-            alignItems: 'center',
-            justifyContent: 'center',
+        alignItems: 'center',
+        justifyContent: 'center',
 
-            marginBottom: 20,
-        },
+        marginBottom: 20,
+    },
 
-        icon: {
-            fontSize: 30,
-            color: '#FFFFFF',
-        },
+    icon: {
+        fontSize: 30,
+        color: '#FFFFFF',
+    },
 
-        title: {
-            fontSize: 28,
-            fontWeight: '800',
-            color: '#18181B',
-        },
+    title: {
+        fontSize: 28,
+        fontWeight: '800',
+        color: '#18181B',
+    },
 
-        description: {
-            marginTop: 10,
+    description: {
+        marginTop: 10,
 
-            fontSize: 15,
-            lineHeight: 23,
+        fontSize: 15,
+        lineHeight: 23,
 
-            color: '#666672',
-        },
+        color: '#666672',
+    },
 
-        infoBox: {
-            marginTop: 24,
+    infoBox: {
+        marginTop: 24,
 
-            padding: 16,
+        padding: 16,
 
-            borderRadius: 18,
+        borderRadius: 18,
 
-            backgroundColor: '#F6F5FF',
-        },
+        backgroundColor: '#F6F5FF',
+    },
 
-        infoTitle: {
-            fontSize: 16,
-            fontWeight: '700',
-            color: '#18181B',
-        },
+    infoTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#18181B',
+    },
 
-        infoText: {
-            marginTop: 6,
+    infoText: {
+        marginTop: 6,
 
-            fontSize: 14,
-            lineHeight: 21,
+        fontSize: 14,
+        lineHeight: 21,
 
-            color: '#666672',
-        },
+        color: '#666672',
+    },
 
-        outlineButton: {
-            marginTop: 14,
+    outlineButton: {
+        marginTop: 14,
 
-            height: 48,
+        height: 48,
 
-            borderRadius: 14,
+        borderRadius: 14,
 
-            borderWidth: 1.5,
-            borderColor: '#6657E8',
+        borderWidth: 1.5,
+        borderColor: '#6657E8',
 
-            alignItems: 'center',
-            justifyContent: 'center',
-        },
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 
-        outlineButtonText: {
-            color: '#6657E8',
-            fontWeight: '700',
-        },
+    outlineButtonText: {
+        color: '#6657E8',
+        fontWeight: '700',
+    },
 
-        label: {
-            marginTop: 26,
-            marginBottom: 8,
+    label: {
+        marginTop: 26,
+        marginBottom: 8,
 
-            fontSize: 13,
-            fontWeight: '700',
+        fontSize: 13,
+        fontWeight: '700',
 
-            color: '#33333A',
-        },
+        color: '#33333A',
+    },
 
-        input: {
-            height: 54,
+    input: {
+        height: 54,
 
-            borderWidth: 1,
-            borderColor: '#DADAE0',
+        borderWidth: 1,
+        borderColor: '#DADAE0',
 
-            borderRadius: 14,
+        borderRadius: 14,
 
-            paddingHorizontal: 15,
+        paddingHorizontal: 15,
 
-            color: '#18181B',
-            fontSize: 16,
+        color: '#18181B',
+        fontSize: 16,
 
-            backgroundColor: '#FAFAFB',
-        },
+        backgroundColor: '#FAFAFB',
+    },
 
-        helper: {
-            marginTop: 7,
+    helper: {
+        marginTop: 7,
 
-            fontSize: 12,
-            lineHeight: 18,
+        fontSize: 12,
+        lineHeight: 18,
 
-            color: '#85858F',
-        },
+        color: '#85858F',
+    },
 
-        errorBox: {
-            marginTop: 14,
+    errorBox: {
+        marginTop: 14,
 
-            padding: 12,
+        padding: 12,
 
-            borderRadius: 12,
+        borderRadius: 12,
 
-            backgroundColor: '#FFF1F1',
-        },
+        backgroundColor: '#FFF1F1',
+    },
 
-        errorText: {
-            color: '#D32F2F',
-            fontSize: 13,
-        },
+    errorText: {
+        color: '#D32F2F',
+        fontSize: 13,
+    },
 
-        connectButton: {
-            marginTop: 22,
+    connectButton: {
+        marginTop: 22,
 
-            height: 54,
+        height: 54,
 
-            borderRadius: 15,
+        borderRadius: 15,
 
-            backgroundColor: '#6657E8',
+        backgroundColor: '#6657E8',
 
-            alignItems: 'center',
-            justifyContent: 'center',
-        },
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 
-        disabledButton: {
-            opacity: 0.7,
-        },
+    disabledButton: {
+        opacity: 0.7,
+    },
 
-        connectButtonText: {
-            color: '#FFFFFF',
+    connectButtonText: {
+        color: '#FFFFFF',
 
-            fontSize: 16,
-            fontWeight: '800',
-        },
+        fontSize: 16,
+        fontWeight: '800',
+    },
 
-        accountText: {
-            marginTop: 18,
+    accountText: {
+        marginTop: 18,
 
-            textAlign: 'center',
+        textAlign: 'center',
 
-            color: '#85858F',
-            fontSize: 12,
-        },
-    });
+        color: '#85858F',
+        fontSize: 12,
+    },
+});
