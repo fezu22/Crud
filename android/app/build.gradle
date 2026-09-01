@@ -78,13 +78,17 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.medi"
-    defaultConfig {
-        applicationId "com.medi"
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
-    }
+   defaultConfig {
+    applicationId "com.medi"
+    minSdkVersion rootProject.ext.minSdkVersion
+    targetSdkVersion rootProject.ext.targetSdkVersion
+    versionCode 1
+    versionName "1.0"
+
+    manifestPlaceholders = [
+        appAuthRedirectScheme: "com.medi"
+    ]
+}
     signingConfigs {
         debug {
             storeFile file('debug.keystore')

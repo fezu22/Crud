@@ -1,7 +1,7 @@
 import { authorize, refresh } from 'react-native-app-auth';
 import * as Keychain from 'react-native-keychain';
 
-const CLOUDINARY_CLIENT_ID = 'PASTE_YOUR_CLOUDINARY_CLIENT_ID_HERE';
+const CLOUDINARY_CLIENT_ID = '06289a42-dbc9-44d1-8807-77ba26d15d2b';
 
 const KEYCHAIN_SERVICE = 'com.medi.cloudinary.oauth';
 

@@ -76,3 +76,4 @@ yarn-error.log
 backend/.env 
 *.apk
 *.apk
+*.apk
