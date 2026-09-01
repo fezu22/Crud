@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     Animated,
-    Modal,
-    Pressable,
     ScrollView,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import CenteredModal from './CenteredModal';
 
 const MONTHS = [
     'January',
@@ -130,17 +129,8 @@ export default function DueDatePicker({ visible, value, onClose, onSelect }) {
     const stepIndex = STEPS.indexOf(step);
 
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            transparent
-            onRequestClose={onClose}
-        >
-            <Pressable className="flex-1 justify-end bg-black/40" onPress={onClose}>
-                <Pressable
-                    className="rounded-t-3xl bg-canvas px-6 pb-8 pt-4"
-                    onPress={() => { }}
-                >
+        <CenteredModal visible={visible} onClose={onClose}>
+                <View className="bg-canvas px-6 pb-7 pt-6">
                     <View className="mb-4 h-1.5 w-12 self-center rounded-full bg-line" />
 
                     <View className="mb-1 flex-row items-center justify-between">
@@ -217,7 +207,7 @@ export default function DueDatePicker({ visible, value, onClose, onSelect }) {
                         ) : null}
 
                         {step === 'day' ? (
-                            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+                            <ScrollView className="max-h-[300px]" showsVerticalScrollIndicator={false}>
                                 <View className="flex-row flex-wrap">
                                     {days.map(d => (
                                         <TouchableOpacity
@@ -234,8 +224,7 @@ export default function DueDatePicker({ visible, value, onClose, onSelect }) {
                             </ScrollView>
                         ) : null}
                     </Animated.View>
-                </Pressable>
-            </Pressable>
-        </Modal>
+                </View>
+        </CenteredModal>
     );
 }

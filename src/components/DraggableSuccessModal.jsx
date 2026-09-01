@@ -7,12 +7,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useColorScheme } from 'nativewind';
 
 export default function DraggableSuccessModal({
   visible,
   message,
   onClose,
 }) {
+  const { colorScheme } = useColorScheme();
+  const dark = colorScheme === 'dark';
   const position = useRef(
     new Animated.ValueXY({
       x: 0,
@@ -163,6 +166,7 @@ export default function DraggableSuccessModal({
       <Animated.View
         style={[
           styles.card,
+          dark && darkStyles.card,
           {
             transform: [
               ...position.getTranslateTransform(),
@@ -183,7 +187,7 @@ export default function DraggableSuccessModal({
           {...panResponder.panHandlers}
           style={styles.dragArea}
         >
-          <View style={styles.dragHandle} />
+          <View style={[styles.dragHandle, dark && darkStyles.dragHandle]} />
         </View>
 
         {/* SUCCESS ICON */}
@@ -203,17 +207,17 @@ export default function DraggableSuccessModal({
         </Text>
 
         {/* MAIN MESSAGE */}
-        <Text style={styles.message}>
+        <Text style={[styles.message, dark && darkStyles.message]}>
           {message}
         </Text>
 
         {/* SUBTITLE */}
-        <Text style={styles.subtitle}>
+        <Text style={[styles.subtitle, dark && darkStyles.subtitle]}>
           Keep going, you're doing great!
         </Text>
 
         {/* DIVIDER */}
-        <View style={styles.divider} />
+        <View style={[styles.divider, dark && darkStyles.divider]} />
 
         {/* BUTTON */}
         <TouchableOpacity
@@ -444,4 +448,11 @@ const styles = StyleSheet.create({
     marginLeft: 9,
     marginTop: -1,
   },
+});
+const darkStyles = StyleSheet.create({
+  card: { backgroundColor: '#201E29', borderWidth: 1, borderColor: '#343140' },
+  dragHandle: { backgroundColor: '#4B4758' },
+  message: { color: '#F8F7FC' },
+  subtitle: { color: '#AAA5B5' },
+  divider: { backgroundColor: '#343140' },
 });

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   ScrollView,
   Text,
   TextInput,
@@ -10,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
+import CenteredModal from '../../components/CenteredModal';
 import ModalHeader from '../../components/ModalHeader';
 import DueDatePicker, { formatDueDate } from '../../components/DueDatePicker';
 import TimePickerModal from '../../components/TimePickerModal';
@@ -135,9 +135,15 @@ export default function TaskFormModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide">
+    <CenteredModal visible={visible} onClose={onClose} cardClassName="h-[92%]">
       <View className="flex-1 bg-canvas">
-        <ModalHeader title={task ? 'Edit task' : 'New task'} onClose={onClose} />
+        <ModalHeader
+          title={task ? 'Edit task' : 'New task'}
+          onBack={onClose}
+          actionLabel={task ? 'Save' : 'Add'}
+          actionDisabled={!title.trim() || saving}
+          onAction={submitTask}
+        />
         <ScrollView contentContainerClassName="px-6 pb-32">
           <Field label="TITLE">
             <TextInput
@@ -345,6 +351,6 @@ export default function TaskFormModal({
           }}
         />
       </View>
-    </Modal>
+    </CenteredModal>
   );
 }

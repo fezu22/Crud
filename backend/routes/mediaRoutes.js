@@ -1,33 +1,22 @@
 const express = require('express');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const mongoose = require('mongoose');
+const cloudinary = require('../config/cloudinary');
 const Media = require('../models/Media');
 const Task = require('../models/Task');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// Diagnostic: verify env vars are loaded
-console.log('🔍 [mediaRoutes] CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME || '❌ MISSING');
-console.log('🔍 [mediaRoutes] CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? '✅ Set' : '❌ MISSING');
-console.log('🔍 [mediaRoutes] CLOUDINARY_API_SECRET:', process.env.CLOUDINARY_API_SECRET ? '✅ Set' : '❌ MISSING');
-
-// Configure Cloudinary SDK
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
 // Configure Multer Cloudinary Storage Engine
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'medi_app_uploads',
+  cloudinary,
+  params: async req => ({
+    folder: `medi-app/users/${req.user._id}`,
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
     transformation: [{ quality: 'auto' }],
-  },
+  }),
 });
 
 const upload = multer({
@@ -37,8 +26,8 @@ const upload = multer({
 
 const libraryStorage = new CloudinaryStorage({
   cloudinary,
-  params: async () => ({
-    folder: 'medi_app_library',
+  params: async req => ({
+    folder: `medi-app/users/${req.user._id}`,
     resource_type: 'auto',
   }),
 });
@@ -69,14 +58,6 @@ async function destroyCloudinaryAsset(publicId, resourceType = 'image') {
   if (!['ok', 'not found'].includes(result?.result)) {
     throw new Error('Cloudinary could not delete the asset');
   }
-}
-
-function getPublicIdFromCloudinaryUrl(imageUrl) {
-  if (!imageUrl) return '';
-  const match = decodeURIComponent(imageUrl).match(
-    /\/upload\/(?:[^/]+\/)*v\d+\/(medi_app_uploads\/[^?#]+?)\.[a-z0-9]+(?:\?|$)/i,
-  );
-  return match?.[1] || '';
 }
 
 async function replaceTaskImageReferences(userId, oldUrl, newUrl = '') {
@@ -120,6 +101,7 @@ router.post('/library/upload', (req, res, next) => {
     const media = await Media.create({
       userId: req.user._id,
       cloudinaryPublicId: publicId,
+      publicId,
       imageUrl: mediaUrl,
       mediaUrl,
       mediaType,
@@ -142,15 +124,15 @@ router.post('/library/upload', (req, res, next) => {
 // ================= 1. UPLOAD MEDIA =================
 // POST /api/media/upload
 router.post('/upload', upload.single('image'), async (req, res) => {
+  const publicId = req.file?.filename || req.file?.public_id;
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'Please select an image file to upload' });
     }
 
     const secureUrl = req.file.path || req.file.secure_url;
-    const publicId = req.file.filename || req.file.public_id;
-
     if (!secureUrl || !publicId) {
+      if (publicId) await destroyCloudinaryAsset(publicId).catch(() => {});
       return res.status(500).json({ message: 'Failed to retrieve Cloudinary upload details' });
     }
 
@@ -158,6 +140,7 @@ router.post('/upload', upload.single('image'), async (req, res) => {
     const media = await Media.create({
       userId: req.user._id,
       cloudinaryPublicId: publicId,
+      publicId,
       imageUrl: secureUrl,
       title: req.body.title ? req.body.title.trim() : '',
       kind:
@@ -170,6 +153,7 @@ router.post('/upload', upload.single('image'), async (req, res) => {
     console.log(`✅ Media created in MongoDB for user: ${req.user._id} (${media._id})`);
     res.status(201).json(media);
   } catch (err) {
+    if (publicId) await destroyCloudinaryAsset(publicId).catch(() => {});
     console.error('❌ Error in /media/upload:', err);
     res.status(500).json({ message: err.message || 'Server error during media upload' });
   }
@@ -190,11 +174,14 @@ router.get('/my-uploads', async (req, res) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
-    const media = await Media.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-    });
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ message: 'Media not found' });
+    }
+    const media = await Media.findById(req.params.id);
     if (!media) return res.status(404).json({ message: 'Media not found' });
+    if (media.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You do not own this media asset' });
+    }
     req.ownedMedia = media;
     next();
   } catch (err) {
@@ -214,7 +201,7 @@ router.put('/:id', async (req, res, next) => {
         });
       }
       try {
-        await destroyCloudinaryAsset(media.cloudinaryPublicId);
+        await destroyCloudinaryAsset(media.publicId || media.cloudinaryPublicId);
       } catch (error) {
         await destroyCloudinaryAsset(newPublicId).catch(() => { });
         return res.status(502).json({
@@ -222,6 +209,7 @@ router.put('/:id', async (req, res, next) => {
         });
       }
       media.cloudinaryPublicId = newPublicId;
+      media.publicId = newPublicId;
       media.imageUrl = newUrl;
     }
     await media.save();
@@ -242,19 +230,18 @@ router.delete('/by-url', async (req, res) => {
       return res.status(400).json({ message: 'Image URL is required' });
     }
 
-    const media = await Media.findOne({
-      userId: req.user._id,
-      imageUrl,
-    });
-    const publicId =
-      media?.cloudinaryPublicId || getPublicIdFromCloudinaryUrl(imageUrl);
-    if (!publicId) {
-      return res.status(404).json({ message: 'Cloudinary image not found' });
+    const media = await Media.findOne({ imageUrl });
+    if (!media) {
+      return res.status(404).json({ message: 'Media not found' });
     }
+    if (media.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You do not own this media asset' });
+    }
+    const publicId = media.publicId || media.cloudinaryPublicId;
 
     await destroyCloudinaryAsset(publicId);
     await replaceTaskImageReferences(req.user._id, imageUrl);
-    if (media) await media.deleteOne();
+    await media.deleteOne();
 
     res.json({ message: 'Image deleted from Cloudinary', imageUrl });
   } catch (err) {
@@ -269,6 +256,9 @@ router.delete('/by-url', async (req, res) => {
 // DELETE /api/media/:id
 router.delete('/:id', async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ message: 'Media not found' });
+    }
     const media = await Media.findById(req.params.id);
 
     if (!media) {
@@ -283,7 +273,7 @@ router.delete('/:id', async (req, res) => {
     // 1. Destroy asset in Cloudinary
     try {
       await destroyCloudinaryAsset(
-        media.cloudinaryPublicId,
+        media.publicId || media.cloudinaryPublicId,
         media.resourceType || (media.mediaType === 'image' ? 'image' : 'video'),
       );
       console.log(`Removed from Cloudinary: ${media.cloudinaryPublicId}`);

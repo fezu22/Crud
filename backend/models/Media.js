@@ -8,7 +8,9 @@ const MediaSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // Keep the legacy name for existing records and client compatibility.
     cloudinaryPublicId: { type: String, required: true },
+    publicId: { type: String, default: '' },
     imageUrl: { type: String, required: true },
     mediaUrl: { type: String, default: '' },
     mediaType: {
@@ -41,6 +43,8 @@ const MediaSchema = new mongoose.Schema(
 MediaSchema.pre('validate', function normalizeMediaUrl() {
   if (!this.mediaUrl) this.mediaUrl = this.imageUrl;
   if (!this.imageUrl) this.imageUrl = this.mediaUrl;
+  if (!this.publicId) this.publicId = this.cloudinaryPublicId;
+  if (!this.cloudinaryPublicId) this.cloudinaryPublicId = this.publicId;
 });
 
 module.exports = mongoose.model('Media', MediaSchema);

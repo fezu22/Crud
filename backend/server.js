@@ -1,9 +1,5 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
-// --- DIAGNOSTIC CHECK ---
-console.log("🔍 ENV CHECK -> Cloud Name:", process.env.CLOUDINARY_CLOUD_NAME);
-// ------------------------
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');

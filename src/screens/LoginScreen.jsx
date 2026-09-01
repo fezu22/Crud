@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StatusBar,
@@ -12,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import CenteredModal from '../components/CenteredModal';
 import useReducedMotion from '../hooks/useReducedMotion';
 
 const taglines = ['Plan softly.', 'Focus clearly.', 'Finish beautifully.'];
@@ -71,17 +71,8 @@ function RegisterModal({ visible, onClose, onRegister }) {
     }
   };
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        className="flex-1 justify-end bg-black/40"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View className="max-h-[90%] rounded-t-[32px] bg-canvas px-6 pb-8 pt-3">
+    <CenteredModal visible={visible} onClose={onClose}>
+      <View className="bg-canvas px-6 pb-7 pt-6">
           <View className="mb-5 h-1 w-10 self-center rounded-full bg-line" />
           <Text className="text-3xl font-extrabold text-ink">
             Create account
@@ -132,8 +123,7 @@ function RegisterModal({ visible, onClose, onRegister }) {
             </TouchableOpacity>
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </CenteredModal>
   );
 }
 

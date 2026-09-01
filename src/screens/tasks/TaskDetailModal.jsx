@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Image,
+  Dimensions,
   Modal,
   ScrollView,
   Text,
@@ -9,6 +9,9 @@ import {
 } from 'react-native';
 import ModalHeader from '../../components/ModalHeader';
 import DraggableSuccessModal from '../../components/DraggableSuccessModal';
+import InfiniteCardSlider from '../../components/InfiniteCardSlider';
+
+const ATTACHMENT_WIDTH = Dimensions.get('window').width - 48;
 export default function TaskDetailModal({
   visible,
   task,
@@ -82,15 +85,12 @@ export default function TaskDetailModal({
               <Text className="mb-3 mt-6 text-[10px] font-extrabold tracking-widest text-muted">
                 ATTACHMENTS
               </Text>
-              <ScrollView horizontal>
-                {images.map((uri, index) => (
-                  <Image
-                    key={uri + index}
-                    source={{ uri }}
-                    className="mr-3 h-36 w-52 rounded-2xl"
-                  />
-                ))}
-              </ScrollView>
+              <InfiniteCardSlider
+                images={images}
+                width={ATTACHMENT_WIDTH}
+                height={210}
+                borderRadius={20}
+              />
             </>
           ) : null}
           {task.subtasks?.length ? (

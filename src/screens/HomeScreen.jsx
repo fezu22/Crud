@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import formatTimestamp from '../utils/formatTimestamp';
+import InfiniteCardSlider from '../components/InfiniteCardSlider';
 
 const filters = ['All', 'Today', 'Upcoming', 'Completed'];
 const statThemes = [
@@ -45,7 +46,8 @@ function EmptyFeed() {
   );
 }
 
-// ---------- NEW SIMPLE IMAGE SLIDER (Reliable) ----------
+// Kept temporarily for compatibility with older card snapshots.
+// eslint-disable-next-line no-unused-vars
 function ImageSlider({ images = [], height = 110, width = 160, rounded = 16 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef(null);
@@ -163,7 +165,7 @@ function ImageSlider({ images = [], height = 110, width = 160, rounded = 16 }) {
   );
 }
 
-function TaskCard({ item, onPress }) {
+function TaskCard({ item, onPress, autoPlay }) {
   const images = item.imageUrls?.length
     ? item.imageUrls
     : item.imageUrl
@@ -203,11 +205,12 @@ function TaskCard({ item, onPress }) {
 
       {images.length > 0 && (
         <View className="mt-4">
-          <ImageSlider
+          <InfiniteCardSlider
             images={images}
+            autoPlay={autoPlay}
             height={110}
             width={160}
-            rounded={18}
+            borderRadius={18}
           />
         </View>
       )}
@@ -224,7 +227,7 @@ function TaskCard({ item, onPress }) {
   );
 }
 
-function MediaCard({ item, onDelete }) {
+function MediaCard({ item, onDelete, autoPlay }) {
   const images = item.imageUrls?.length
     ? item.imageUrls
     : item.imageUrl
@@ -237,11 +240,12 @@ function MediaCard({ item, onDelete }) {
     <View className="mb-4 overflow-hidden rounded-3xl border border-line bg-canvas p-4">
       {images.length > 0 && (
         <View style={{ width: '100%' }}>
-          <ImageSlider
+          <InfiniteCardSlider
             images={images}
+            autoPlay={autoPlay}
             height={220}
             width={mediaWidth}
-            rounded={18}
+            borderRadius={18}
           />
         </View>
       )}
@@ -292,6 +296,11 @@ export default function HomeScreen({
 
   const greetingOpacity = useRef(new Animated.Value(1)).current;
   const [displayedGreeting, setDisplayedGreeting] = useState('');
+  const [activeSliderId, setActiveSliderId] = useState(null);
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 65 }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    setActiveSliderId(viewableItems[0]?.item?._id || null);
+  }).current;
   const fullGreeting = getGreeting();
 
   useEffect(() => {
@@ -447,11 +456,17 @@ export default function HomeScreen({
           <FlatList
             data={items}
             keyExtractor={item => item._id}
+            initialNumToRender={4}
+            maxToRenderPerBatch={3}
+            windowSize={5}
+            removeClippedSubviews
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
             renderItem={({ item }) =>
               item.feedType === 'media' ? (
-                <MediaCard item={item} onDelete={() => onDeleteMedia(item)} />
+                <MediaCard item={item} autoPlay={item._id === activeSliderId} onDelete={() => onDeleteMedia(item)} />
               ) : (
-                <TaskCard item={item} onPress={() => onTask(item)} />
+                <TaskCard item={item} autoPlay={item._id === activeSliderId} onPress={() => onTask(item)} />
               )
             }
             refreshing={refreshing}

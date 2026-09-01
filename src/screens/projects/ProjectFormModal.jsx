@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import CenteredModal from '../../components/CenteredModal';
 import ModalHeader from '../../components/ModalHeader';
 import DueDatePicker, {
   formatDueDate,
@@ -28,7 +28,7 @@ export default function ProjectFormModal({ visible, saving, onClose, onSave }) {
     }
   }, [visible]);
   return (
-    <Modal visible={visible} animationType="slide">
+    <CenteredModal visible={visible} onClose={onClose} cardClassName="h-[88%]">
       <View className="flex-1 bg-canvas">
         <ModalHeader title="New project" onClose={onClose} />
         <ScrollView contentContainerClassName="px-6 pb-28 pt-6">
@@ -70,7 +70,6 @@ export default function ProjectFormModal({ visible, saving, onClose, onSave }) {
           >
             <Text
               className={dueDate ? 'text-ink' : 'text-muted'}
-              style={!dueDate ? { color: '#817C94' } : undefined}
             >
               {dueDate ? formatDueDate(dueDate) : 'Select a due date'}
             </Text>
@@ -132,6 +131,6 @@ export default function ProjectFormModal({ visible, saving, onClose, onSave }) {
           }}
         />
       </View>
-    </Modal>
+    </CenteredModal>
   );
 }

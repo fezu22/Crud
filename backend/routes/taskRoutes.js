@@ -2,18 +2,12 @@ const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
 const Media = require('../models/Media');
-const cloudinary = require('cloudinary').v2;
+const cloudinary = require('../config/cloudinary');
 const auth = require('../middleware/auth');
 const {
   buildTaskCreatePayload,
   pickTaskUpdates,
 } = require('../utils/taskPayload');
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 async function deleteCloudinaryTaskImages(userId, imageUrls) {
   const urls = [...new Set((imageUrls || []).filter(Boolean))];
@@ -32,7 +26,7 @@ async function deleteCloudinaryTaskImages(userId, imageUrls) {
 
   for (const media of mediaItems) {
     const result = await cloudinary.uploader.destroy(
-      media.cloudinaryPublicId,
+      media.publicId || media.cloudinaryPublicId,
       { invalidate: true },
     );
     if (!['ok', 'not found'].includes(result?.result)) {
