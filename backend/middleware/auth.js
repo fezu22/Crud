@@ -24,6 +24,7 @@ const auth = async (req, res, next) => {
 
     req.user = user;
     req.token = token;
+    User.updateOne({ _id: user._id }, { lastActiveAt: new Date() }).catch(() => {});
     next();
   } catch (err) {
     console.error('❌ Auth Middleware Error:', err.message);

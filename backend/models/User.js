@@ -43,6 +43,7 @@ const UserSchema = new mongoose.Schema(
       default: 'email',
     },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    lastActiveAt: { type: Date, default: null },
 
     cloudinaryConnected: {
       type: Boolean,

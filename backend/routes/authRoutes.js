@@ -5,6 +5,7 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+router.get('/ping', auth, (req, res) => res.json({ ok: true }));
 
 const generateToken = userId => {
   const secret =

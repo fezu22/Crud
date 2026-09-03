@@ -52,6 +52,7 @@ import {
   uploadLibraryMedia,
   uploadMedia,
   saveCloudinaryConnection,
+  pingActive,
 } from './src/services/api';
 import { clearSession, loadSession, saveSession } from './src/storage/sessionStorage';
 import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
@@ -140,6 +141,11 @@ export default function App() {
   }
 
   useEffect(() => { restoreSession(); }, []);
+  useEffect(() => {
+    if (!token) return undefined;
+    const id = setInterval(() => pingActive(token).catch(() => {}), 15000);
+    return () => clearInterval(id);
+  }, [token]);
   useEffect(() => () => {
     if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
   }, []);
