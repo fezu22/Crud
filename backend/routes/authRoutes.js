@@ -137,6 +137,13 @@ const handleRegister = async (req, res) => {
       }
 
       userData.email = normalizedEmail;
+
+      // Admin email se register karne wale user ko automatically
+      // admin role de do, taake Chat with Admin feature kaam kare.
+      const configuredAdminEmail = String(process.env.ADMIN_EMAIL || 'dadajackie3@gmail.com').trim().toLowerCase();
+      if (normalizedEmail === configuredAdminEmail) {
+        userData.role = 'admin';
+      }
     }
 
     // PHONE
