@@ -21,6 +21,13 @@ router.get('/admin', async (req, res) => {
   res.json(publicUser(admin));
 });
 
+router.get('/conversations', async (req, res) => {
+  const messages = await ChatMessage.find({ $or: [{ sender: req.user._id }, { recipient: req.user._id }] }).sort({ createdAt: -1 }).lean();
+  const groups = new Map(); messages.forEach(m => { const id = String(m.sender) === String(req.user._id) ? m.recipient : m.sender; if (!groups.has(String(id))) groups.set(String(id), []); groups.get(String(id)).push(m); });
+  const users = await User.find({ _id: { $in: [...groups.keys()] } }).select('name email role').lean();
+  res.json(users.map(u => { const ms = groups.get(String(u._id)); return { user: publicUser(u), lastMessage: ms[0].text, lastMessageAt: ms[0].createdAt, unreadCount: ms.filter(m => String(m.recipient) === String(req.user._id) && !m.read).length }; }).sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt)));
+});
+
 router.get('/:userId', async (req, res) => {
   const other = await User.findById(req.params.userId).select('name email role');
   if (!other) return res.status(404).json({ message: 'User not found' });

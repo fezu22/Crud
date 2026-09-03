@@ -42,7 +42,13 @@ async function request(
     },
   );
 
-  const data = await response.json();
+  const raw = await response.text();
+  let data;
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch (parseError) {
+    throw new Error(`Backend returned an invalid response (${response.status}). Make sure the Medi backend is running at ${API_BASE_URL}.`);
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -369,6 +375,7 @@ export async function deleteProject(
 // ================= CHAT API =================
 export async function getChatUsers(token, query = '') { return request(`/chat/users?q=${encodeURIComponent(query)}`, { token }); }
 export async function getAdminChat(token) { return request('/chat/admin', { token }); }
+export async function getConversations(token) { return request('/chat/conversations', { token }); }
 export async function getChatMessages(userId, token) { return request(`/chat/${userId}`, { token }); }
 export async function sendChatMessage(userId, text, token) { return request(`/chat/${userId}`, { method: 'POST', token, body: { text } }); }
 

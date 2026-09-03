@@ -27,6 +27,7 @@ import ConnectCloudStorageScreen from './src/screens/ConnectCloudStorageScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
 import ProjectsScreen from './src/screens/projects/ProjectsScreen';
 import ChatScreen from './src/screens/ChatScreen';
+import AdminDashboardScreen from './src/screens/admin/AdminDashboardScreen';
 import ProjectDetailModal from './src/screens/projects/ProjectDetailModal';
 import ProjectFormModal from './src/screens/projects/ProjectFormModal';
 import TaskDetailModal from './src/screens/tasks/TaskDetailModal';
@@ -360,6 +361,10 @@ export default function App() {
         </View>
       </AlertNotificationRoot>
     );
+  }
+
+  if (user?.role === 'admin') {
+    return <AlertNotificationRoot theme={preferences.theme}><View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} /><AdminDashboardScreen token={token} user={user} onLogout={logout} onError={error => showError('Chat error', error)} /><ConfirmDialog config={confirm} onCancel={closeConfirm} /></SafeAreaView></View></AlertNotificationRoot>;
   }
 
   return (
