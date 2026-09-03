@@ -1,9 +1,8 @@
 import { NativeModules, Platform } from 'react-native';
 
-// Android development uses `adb reverse tcp:5000 tcp:5000`, so localhost on
-// the device maps safely to this computer without depending on changing Wi-Fi IPs.
-const ANDROID_DEV_HOST = '127.0.0.1';
-const LAN_FALLBACK_HOST = '192.168.1.7';
+// `yarn android` runs `adb reverse tcp:5000 tcp:5000`, so Android can
+// reach the backend through localhost without depending on a changing LAN IP.
+const LAN_FALLBACK_HOST = '127.0.0.1';
 
 function getMetroHost() {
   const scriptUrl = NativeModules.SourceCode?.scriptURL;
@@ -12,7 +11,8 @@ function getMetroHost() {
 }
 
 export function resolveApiHost() {
-  if (__DEV__ && Platform.OS === 'android') return ANDROID_DEV_HOST;
+  // With adb reverse, localhost on the device maps to the computer.
+  if (__DEV__ && Platform.OS === 'android') return LAN_FALLBACK_HOST;
   return getMetroHost() || LAN_FALLBACK_HOST;
 }
 

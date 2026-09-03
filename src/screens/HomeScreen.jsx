@@ -284,6 +284,7 @@ export default function HomeScreen({
   onTask,
   onDeleteMedia,
   onAddTask,
+  onUpload,
 }) {
   const stats = [
     [tasks.length, 'Total'],
@@ -390,6 +391,9 @@ export default function HomeScreen({
             My Tasks
           </Text>
         </Animated.View>
+        <TouchableOpacity onPress={onUpload} className="mr-2 rounded-2xl bg-brand px-3 py-2">
+          <Text className="text-xs font-extrabold text-white">Upload</Text>
+        </TouchableOpacity>
         <View className="h-14 w-14 items-center justify-center rounded-3xl bg-brand ml-2">
           <Text className="text-lg font-extrabold text-white">
             {(user?.name || user?.phoneNumber || 'U').charAt(0).toUpperCase()}

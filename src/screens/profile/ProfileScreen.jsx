@@ -38,6 +38,7 @@ export default function ProfileScreen({
   notifications,
   onToggleTheme,
   onToggleNotifications,
+  onConnectCloud,
 }) {
   const dark = theme === 'dark';
   return (
@@ -73,6 +74,10 @@ export default function ProfileScreen({
         PREFERENCES
       </Text>
       <View className="overflow-hidden rounded-3xl border border-line dark:border-[#343140] dark:bg-[#1b1923]">
+        <TouchableOpacity onPress={onConnectCloud} className="h-[72px] flex-row items-center border-b border-line px-4 dark:border-[#343140]">
+          <View className="mr-3 h-10 w-10 items-center justify-center rounded-xl bg-[#f1eefc] dark:bg-[#2c2840]"><Text className="dark:text-white">☁</Text></View>
+          <View className="flex-1"><Text className="font-bold text-ink dark:text-white">Cloud storage</Text><Text className="mt-0.5 text-xs text-muted dark:text-[#aaa5b5]">{user?.cloudName && user?.uploadPreset ? 'Connected — edit details' : 'Connect before uploading'}</Text></View><Text className="text-2xl text-[#b0acb9]">›</Text>
+        </TouchableOpacity>
         <Setting
           icon="♢"
           title="Notifications"

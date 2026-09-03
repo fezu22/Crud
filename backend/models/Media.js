@@ -8,8 +8,23 @@ const MediaSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    ownerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+    },
+    isPrivate: { type: Boolean, default: false, index: true },
+    encryption: {
+      algorithm: { type: String, default: null },
+      salt: { type: String, default: null },
+      iv: { type: String, default: null },
+      authTag: { type: String, default: null },
+      encryptedMimeType: { type: String, default: null },
+    },
     // Keep the legacy name for existing records and client compatibility.
     cloudinaryPublicId: { type: String, required: true },
+    cloudName: { type: String, required: true, trim: true, index: true },
+    assetId: { type: String, default: '' },
     publicId: { type: String, default: '' },
     imageUrl: { type: String, required: true },
     mediaUrl: { type: String, default: '' },
@@ -23,9 +38,12 @@ const MediaSchema = new mongoose.Schema(
     originalName: { type: String, default: '' },
     resourceType: {
       type: String,
-      enum: ['image', 'video'],
+      enum: ['image', 'video', 'raw'],
       default: 'image',
     },
+    format: { type: String, default: '' },
+    width: { type: Number, default: 0 },
+    height: { type: Number, default: 0 },
     bytes: { type: Number, default: 0 },
     duration: { type: Number, default: 0 },
     title: { type: String, default: '', trim: true },
@@ -39,8 +57,11 @@ const MediaSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+MediaSchema.index({ userId: 1, createdAt: -1 });
 
 MediaSchema.pre('validate', function normalizeMediaUrl() {
+  if (!this.ownerId) this.ownerId = this.userId;
+  if (!this.userId) this.userId = this.ownerId;
   if (!this.mediaUrl) this.mediaUrl = this.imageUrl;
   if (!this.imageUrl) this.imageUrl = this.mediaUrl;
   if (!this.publicId) this.publicId = this.cloudinaryPublicId;

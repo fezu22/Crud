@@ -2,45 +2,39 @@ const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
 const Media = require('../models/Media');
-const cloudinary = require('../config/cloudinary');
 const auth = require('../middleware/auth');
 const {
   buildTaskCreatePayload,
   pickTaskUpdates,
 } = require('../utils/taskPayload');
 
+async function protectTaskImages(tasks) {
+  const list = Array.isArray(tasks) ? tasks : [tasks];
+  const urls = [...new Set(list.flatMap(task => task.imageUrls || [task.imageUrl]).filter(Boolean))];
+  // Tasks may contain a previously issued signed URL. Match those URLs by
+  // Cloudinary public_id as well, because signed URLs expire and change.
+  const publicIds = [...new Set(urls.map(url => {
+    const match = String(url).match(/\/v\d+\/(.+?)(?:\.[^./?#]+)?(?:[?#].*)?$/i);
+    return match ? decodeURIComponent(match[1]) : '';
+  }).filter(Boolean))];
+  const media = await Media.find({
+    $or: [
+      { imageUrl: { $in: urls } },
+      { publicId: { $in: publicIds } },
+      { cloudinaryPublicId: { $in: publicIds } },
+    ],
+  });
+  const byUrl = new Map(media.map(item => [item.imageUrl, item]));
+  const byPublicId = new Map(media.flatMap(item => [[item.publicId, item], [item.cloudinaryPublicId, item]]));
+  return list.map(task => typeof task.toObject === 'function' ? task.toObject() : task);
+}
+
 async function deleteCloudinaryTaskImages(userId, imageUrls) {
   const urls = [...new Set((imageUrls || []).filter(Boolean))];
   if (!urls.length) return;
   const mediaItems = await Media.find({ userId, imageUrl: { $in: urls } });
-  const savedUrls = new Set(mediaItems.map(media => media.imageUrl));
-  const legacyPublicIds = urls
-    .filter(url => !savedUrls.has(url))
-    .map(url => {
-      const match = decodeURIComponent(url).match(
-        /\/upload\/(?:[^/]+\/)*v\d+\/(medi_app_uploads\/[^?#]+?)\.[a-z0-9]+(?:\?|$)/i,
-      );
-      return match?.[1] || '';
-    })
-    .filter(Boolean);
-
   for (const media of mediaItems) {
-    const result = await cloudinary.uploader.destroy(
-      media.publicId || media.cloudinaryPublicId,
-      { invalidate: true },
-    );
-    if (!['ok', 'not found'].includes(result?.result)) {
-      throw new Error('Cloudinary image could not be deleted');
-    }
     await media.deleteOne();
-  }
-  for (const publicId of legacyPublicIds) {
-    const result = await cloudinary.uploader.destroy(publicId, {
-      invalidate: true,
-    });
-    if (!['ok', 'not found'].includes(result?.result)) {
-      throw new Error('Legacy Cloudinary image could not be deleted');
-    }
   }
 }
 
@@ -50,8 +44,8 @@ router.use(auth);
 // GET all tasks for logged-in user - sorted newest first
 router.get('/', async (req, res) => {
   try {
-    const tasks = await Task.find({ user: req.user._id }).sort({ createdAt: -1 });
-    res.json(tasks);
+    const tasks = await Task.find({ user: req.user._id }).sort({ createdAt: -1 }).lean();
+    res.json(await protectTaskImages(tasks));
   } catch (err) {
     console.error('❌ Error fetching tasks:', err);
     res.status(500).json({ message: err.message || 'Failed to fetch tasks' });
@@ -65,7 +59,7 @@ router.get('/:id', async (req, res) => {
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
     }
-    res.json(task);
+    res.json((await protectTaskImages(task))[0]);
   } catch (err) {
     console.error('❌ Error fetching task by ID:', err);
     res.status(500).json({ message: err.message || 'Failed to fetch task' });
@@ -132,7 +126,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Task not found' });
     }
 
-    res.json(task);
+    res.json((await protectTaskImages(task))[0]);
   } catch (err) {
     console.error('Error updating task:', err);
     res

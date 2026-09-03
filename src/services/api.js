@@ -1,4 +1,6 @@
 import { API_BASE_URL } from '../config/apiConfig';
+import { encryptFile } from './privateCrypto';
+import RNFS from 'react-native-fs';
 
 export async function apiFetch(url, options) {
   try {
@@ -26,13 +28,13 @@ const getHeaders = token => {
 
 async function request(
   path,
-  { method = 'GET', token, body } = {},
+  { method = 'GET', token, body, headers: extraHeaders } = {},
 ) {
   const response = await apiFetch(
     `${API_BASE_URL}${path}`,
     {
       method,
-      headers: getHeaders(token),
+      headers: { ...getHeaders(token), ...(extraHeaders || {}) },
       body:
         body === undefined
           ? undefined
@@ -173,9 +175,10 @@ export async function getCurrentUser(token) {
 
 export async function saveCloudinaryConnection(
   cloudName,
+  uploadPreset,
   token,
 ) {
-  if (!cloudName?.trim()) {
+  if (!cloudName?.trim() || !uploadPreset?.trim()) {
     throw new Error(
       'Cloudinary Cloud Name is required',
     );
@@ -188,6 +191,7 @@ export async function saveCloudinaryConnection(
       headers: getHeaders(token),
       body: JSON.stringify({
         cloudName: cloudName.trim(),
+        uploadPreset: uploadPreset.trim(),
       }),
     },
   );
@@ -362,14 +366,42 @@ export async function deleteProject(
   });
 }
 
+// ================= CHAT API =================
+export async function getChatUsers(token, query = '') { return request(`/chat/users?q=${encodeURIComponent(query)}`, { token }); }
+export async function getAdminChat(token) { return request('/chat/admin', { token }); }
+export async function getChatMessages(userId, token) { return request(`/chat/${userId}`, { token }); }
+export async function sendChatMessage(userId, text, token) { return request(`/chat/${userId}`, { method: 'POST', token, body: { text } }); }
+
 // ================= CLOUDINARY MEDIA API =================
 
-// IMPORTANT:
-// Ye upload functions filhaal existing backend
-// Cloudinary system use kar rahe hain.
-//
-// Next step mein inko user's personal
-// Cloudinary account par move karenge.
+async function uploadToPersonalCloudinary(file, title, kind, batchId, token, isPrivate = false, cloudStorage) {
+  if (!cloudStorage?.cloudName?.trim() || !cloudStorage?.uploadPreset?.trim()) {
+    throw new Error('Add your Cloudinary Cloud Name and unsigned Upload Preset before uploading.');
+  }
+  const resourceType = isPrivate ? 'raw' : (file.type?.startsWith('image/') ? 'image' : 'video');
+  let uploadFile = file;
+  let encryption;
+  if (isPrivate) {
+    const encrypted = await encryptFile(file);
+    uploadFile = { uri: encrypted.path, type: 'application/octet-stream', fileName: `blob_${Date.now()}.bin` };
+    encryption = { algorithm: 'AES-256-GCM', iv: encrypted.iv, authTag: encrypted.authTag, encryptedMimeType: encrypted.encryptedMimeType };
+  }
+  const body = new FormData();
+  body.append('file', { uri: uploadFile.uri, type: uploadFile.type || 'application/octet-stream', name: uploadFile.fileName || `blob_${Date.now()}.bin` });
+  body.append('upload_preset', cloudStorage.uploadPreset.trim());
+  const uploadCloudName = cloudStorage.cloudName.trim();
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${uploadCloudName}/${resourceType}/upload`, {
+    method: 'POST', body,
+  });
+  const uploaded = await response.json();
+  if (!response.ok || !uploaded.public_id) throw new Error(uploaded.error?.message || 'Cloudinary upload failed');
+  if (isPrivate) await RNFS.unlink(uploadFile.uri).catch(() => {});
+  return registerMedia({ ...uploaded, cloudName: uploadCloudName, title, kind, batchId, isPrivate, encryption }, token);
+}
+
+async function registerMedia(metadata, token) {
+  return request('/media/register', { method: 'POST', token, body: metadata });
+}
 
 export async function uploadMedia(
   file,
@@ -377,119 +409,26 @@ export async function uploadMedia(
   token,
   kind = 'upload',
   batchId = null,
+  isPrivate = false,
+  cloudStorage,
 ) {
-  const formData = new FormData();
-
-  formData.append('image', {
-    uri: file.uri,
-    type:
-      file.type ||
-      'image/jpeg',
-    name:
-      file.fileName ||
-      `upload_${Date.now()}.jpg`,
-  });
-
-  if (title) {
-    formData.append(
-      'title',
-      title,
-    );
-  }
-
-  formData.append(
-    'kind',
-    kind,
-  );
-
-  if (batchId) {
-    formData.append(
-      'batchId',
-      batchId,
-    );
-  }
-
-  const response = await apiFetch(
-    `${API_BASE_URL}/media/upload`,
-    {
-      method: 'POST',
-
-      headers: {
-        Authorization:
-          `Bearer ${token}`,
-      },
-
-      body: formData,
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Media upload to Cloudinary failed',
-    );
-  }
-
-  return data;
+  return uploadToPersonalCloudinary(file, title, kind, batchId, token, isPrivate, cloudStorage);
 }
 
 export async function uploadLibraryMedia(
   file,
   title,
   token,
+  isPrivate = false,
+  cloudStorage,
 ) {
-  const formData = new FormData();
-
-  formData.append('file', {
-    uri: file.uri,
-
-    type:
-      file.type ||
-      'application/octet-stream',
-
-    name:
-      file.fileName ||
-      `media_${Date.now()}`,
-  });
-
-  if (title) {
-    formData.append(
-      'title',
-      title,
-    );
-  }
-
-  const response = await apiFetch(
-    `${API_BASE_URL}/media/library/upload`,
-    {
-      method: 'POST',
-
-      headers: {
-        Authorization:
-          `Bearer ${token}`,
-      },
-
-      body: formData,
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Video or audio upload failed',
-    );
-  }
-
-  return data;
+  return uploadToPersonalCloudinary(file, title, 'library', null, token, isPrivate, cloudStorage);
 }
 
-export async function getMyMedia(token) {
+export async function getMyMedia(token, cloudName) {
+  const query = cloudName ? `?cloudName=${encodeURIComponent(cloudName)}` : '';
   const response = await apiFetch(
-    `${API_BASE_URL}/media/my-uploads`,
+    `${API_BASE_URL}/media/my-uploads${query}`,
     {
       headers: getHeaders(token),
     },
@@ -505,6 +444,10 @@ export async function getMyMedia(token) {
   }
 
   return data;
+}
+
+export async function getPrivateMedia(token) {
+  return request('/media/private', { token });
 }
 
 export async function deleteMedia(
@@ -530,6 +473,7 @@ export async function deleteMedia(
 
   return data;
 }
+
 
 export async function deleteMediaByUrl(
   imageUrl,

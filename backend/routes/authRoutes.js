@@ -23,10 +23,14 @@ const formatUser = user => ({
   email: user.email,
   phoneNumber: user.phoneNumber,
   authProvider: user.authProvider,
+  role: user.role || 'user',
+  encryptionSalt: user.encryptionSalt,
 
   // Cloudinary connection status
   cloudinaryConnected: Boolean(user.cloudinaryConnected),
   cloudinaryCloudName: user.cloudinaryCloudName || '',
+  cloudName: user.cloudName || '',
+  uploadPreset: user.uploadPreset || '',
   cloudinaryConnectedAt:
     user.cloudinaryConnectedAt || null,
 });
@@ -103,6 +107,7 @@ const handleRegister = async (req, res) => {
       // New account starts without Cloudinary
       cloudinaryConnected: false,
       cloudinaryCloudName: '',
+      cloudName: '',
       cloudinaryConnectedAt: null,
     };
 
@@ -402,6 +407,7 @@ router.post(
 
           cloudinaryConnected: false,
           cloudinaryCloudName: '',
+          cloudName: '',
           cloudinaryConnectedAt: null,
         };
 
@@ -516,17 +522,23 @@ router.put(
       const cloudName = String(
         req.body.cloudName || '',
       ).trim();
+      const uploadPreset = String(req.body.uploadPreset || '').trim();
 
-      if (!cloudName) {
+      if (!cloudName || !uploadPreset) {
         return res.status(400).json({
           message:
             'Cloudinary Cloud Name is required',
         });
       }
 
+      const owner = await User.findOne({ cloudName, _id: { $ne: req.user._id } }).select('_id');
+      if (owner) return res.status(409).json({ message: 'This Cloudinary Cloud Name is already connected to another Medi user.' });
+
       req.user.cloudinaryConnected = true;
       req.user.cloudinaryCloudName =
         cloudName;
+      req.user.cloudName = cloudName;
+      req.user.uploadPreset = uploadPreset;
 
       req.user.cloudinaryConnectedAt =
         new Date();
@@ -565,6 +577,8 @@ router.delete(
     try {
       req.user.cloudinaryConnected = false;
       req.user.cloudinaryCloudName = '';
+      req.user.cloudName = '';
+      req.user.uploadPreset = '';
       req.user.cloudinaryConnectedAt = null;
 
       await req.user.save();

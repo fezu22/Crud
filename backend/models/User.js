@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const UserSchema = new mongoose.Schema(
   {
@@ -31,6 +32,7 @@ const UserSchema = new mongoose.Schema(
       type: String,
       minlength: [6, 'Password must be at least 6 characters long'],
     },
+    encryptionSalt: { type: String, required: true, default: () => crypto.randomBytes(16).toString('base64') },
     truecallerId: {
       type: String,
       sparse: true,
@@ -40,6 +42,7 @@ const UserSchema = new mongoose.Schema(
       enum: ['email', 'phone', 'truecaller'],
       default: 'email',
     },
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
 
     cloudinaryConnected: {
       type: Boolean,
@@ -51,6 +54,8 @@ const UserSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    cloudName: { type: String, trim: true, default: '' },
+    uploadPreset: { type: String, trim: true, default: '' },
 
     cloudinaryConnectedAt: {
       type: Date,
@@ -59,5 +64,10 @@ const UserSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+UserSchema.index({ cloudName: 1 }, {
+  unique: true,
+  partialFilterExpression: { cloudName: { $type: 'string', $ne: '' } },
+});
 
 module.exports = mongoose.model('User', UserSchema);

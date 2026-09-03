@@ -17,12 +17,16 @@ import {
 
 import DraggableSuccessModal from './src/components/DraggableSuccessModal';
 import ConfirmDialog from './src/components/ConfirmDialog';
+import CloudinaryAlert from './src/components/CloudinaryAlert';
 import BottomNav from './src/navigation/BottomNav';
 import HomeScreen from './src/screens/HomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import MediaLibraryScreen from './src/screens/MediaLibraryScreen';
+import UploadScreen from './src/screens/UploadScreen';
+import ConnectCloudStorageScreen from './src/screens/ConnectCloudStorageScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
 import ProjectsScreen from './src/screens/projects/ProjectsScreen';
+import ChatScreen from './src/screens/ChatScreen';
 import ProjectDetailModal from './src/screens/projects/ProjectDetailModal';
 import ProjectFormModal from './src/screens/projects/ProjectFormModal';
 import TaskDetailModal from './src/screens/tasks/TaskDetailModal';
@@ -38,14 +42,18 @@ import {
 import {
   createProject,
   deleteMedia,
+  getCurrentUser,
   getMyMedia,
   getProjects,
   getTasks,
   loginUser,
   registerUser,
   uploadLibraryMedia,
+  uploadMedia,
+  saveCloudinaryConnection,
 } from './src/services/api';
 import { clearSession, loadSession, saveSession } from './src/storage/sessionStorage';
+import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -78,6 +86,11 @@ export default function App() {
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [connectCloudOpen, setConnectCloudOpen] = useState(false);
+  const [savingCloud, setSavingCloud] = useState(false);
+  const [cloudAlertOpen, setCloudAlertOpen] = useState(false);
+  // Keep hook order stable for Fast Refresh; cloud checking is immediate now.
+  const [checkingCloud] = useState(false);
   const [confirm, setConfirm] = useState(emptyConfirm);
   const [taskOriginTab, setTaskOriginTab] = useState(null);
   const [successModal, setSuccessModal] = useState({
@@ -92,6 +105,7 @@ export default function App() {
     toggleTask, toggleSubtask, removeTask, removeTaskImage,
   } = useTasks({
     token,
+    user,
     ask,
     showError,
     showSuccess,
@@ -132,7 +146,7 @@ export default function App() {
     if (token) loadWorkspace(token);
     else resetWorkspace();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, user?.cloudName]);
   useEffect(() => {
     if (!preferences.ready || !token) return;
     syncTaskReminders(tasks, preferences.notifications).catch(error =>
@@ -145,7 +159,9 @@ export default function App() {
       const session = await loadSession();
       if (session.token) {
         setToken(session.token);
-        setUser(session.user);
+        const fresh = await getCurrentUser(session.token);
+        setUser(fresh.user);
+        await saveSession(session.token, fresh.user);
       }
     } catch (error) {
       console.warn('Failed to load session:', error);
@@ -190,11 +206,14 @@ export default function App() {
     try {
       const [taskData, mediaData, projectData] = await Promise.all([
         getTasks(authToken).catch(() => []),
-        getMyMedia(authToken).catch(() => []),
+        user?.cloudName
+          ? getMyMedia(authToken, user.cloudName).catch(() => [])
+          : Promise.resolve([]),
         getProjects(authToken).catch(() => []),
       ]);
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setTasks(taskData || []);
+      const hasCloud = Boolean(user?.cloudName && user?.uploadPreset);
+      setTasks((taskData || []).map(task => hasCloud ? task : { ...task, imageUrl: '', imageUrls: [] }));
       setMedia(mediaData || []);
       setProjects(projectData || []);
     } catch (error) {
@@ -213,6 +232,7 @@ export default function App() {
     setAuthLoading(true);
     try {
       const data = await loginUser(credentials.identifier, credentials.password);
+      if (data.user?.encryptionSalt) deriveSessionKey(credentials.password, data.user.encryptionSalt);
       setToken(data.token);
       setUser(data.user);
       await saveSession(data.token, data.user);
@@ -226,6 +246,7 @@ export default function App() {
   async function register(form) {
     const identifier = form.email || form.phone;
     const data = await registerUser(form.name, identifier, form.password);
+    if (data.user?.encryptionSalt) deriveSessionKey(form.password, data.user.encryptionSalt);
     setToken(data.token);
     setUser(data.user);
     await saveSession(data.token, data.user);
@@ -239,6 +260,7 @@ export default function App() {
       onConfirm: async () => {
         setToken(null);
         setUser(null);
+        clearSessionKey();
         resetWorkspace();
         await clearSession();
       },
@@ -266,7 +288,10 @@ export default function App() {
   async function addLibraryMedia(file, title) {
     setUploadingMedia(true);
     try {
-      const uploaded = await uploadLibraryMedia(file, title, token);
+      const fresh = await getCurrentUser(token);
+      setUser(fresh.user);
+      await saveSession(token, fresh.user);
+      const uploaded = await uploadLibraryMedia(file, title, token, false, { cloudName: fresh.user.cloudName, uploadPreset: fresh.user.uploadPreset });
       setMedia(items => [uploaded, ...items]);
       showSuccess('Media uploaded!');
     } catch (error) {
@@ -274,6 +299,28 @@ export default function App() {
     } finally {
       setUploadingMedia(false);
     }
+  }
+  async function ensureCloudStorage() {
+    // Do not wait for a network round-trip when the current user clearly has
+    // no personal Cloudinary details. Show the connection prompt instantly.
+    if (!user?.cloudName || !user?.uploadPreset) {
+      setCloudAlertOpen(true);
+      return false;
+    }
+    // The picker should open immediately. The upload handlers fetch the
+    // profile again at upload time, so this check need not block the picker.
+    return true;
+  }
+  async function connectCloud(cloudName, uploadPreset) {
+    setSavingCloud(true);
+    try {
+      const data = await saveCloudinaryConnection(cloudName, uploadPreset, token);
+      setUser(data.user);
+      await saveSession(token, data.user);
+      await loadWorkspace(token);
+      setConnectCloudOpen(false);
+      showSuccess('Cloud storage connected!');
+    } finally { setSavingCloud(false); }
   }
   function removeLibraryMedia(item) {
     ask({
@@ -323,14 +370,35 @@ export default function App() {
             barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'}
             backgroundColor={preferences.theme === 'dark' ? '#12111a' : '#ffffff'}
           />
-          {activeTab === 'home' ? (
+          {connectCloudOpen ? (
+            <ConnectCloudStorageScreen initialCloudName={user?.cloudName} initialUploadPreset={user?.uploadPreset} saving={savingCloud} onSave={connectCloud} onBack={() => setConnectCloudOpen(false)} />
+          ) : activeTab === 'upload' ? (
+            <UploadScreen user={user} token={token} uploading={uploadingMedia}
+              onUpload={async file => {
+                setUploadingMedia(true);
+                try {
+                  const fresh = await getCurrentUser(token);
+                  setUser(fresh.user);
+                  await saveSession(token, fresh.user);
+                  const uploaded = await uploadMedia(file, file.fileName || 'Upload', token, 'upload', null, false, { cloudName: fresh.user.cloudName, uploadPreset: fresh.user.uploadPreset });
+                  setMedia(items => [uploaded, ...items]);
+                  showSuccess('Upload complete!');
+                } finally { setUploadingMedia(false); }
+              }}
+              onNeedCloudConnection={ensureCloudStorage}
+              checkingCloud={checkingCloud}
+              onError={error => showError('Upload failed', error)} />
+          ) : activeTab === 'home' ? (
             <HomeScreen
               user={user} tasks={tasks} items={feedItems} loading={loading}
               refreshing={refreshing} searchText={search} onSearch={setSearch}
               filter={filter} onFilter={setFilter} onRefresh={refresh}
               onTask={openTaskDetail} onDeleteMedia={removeMedia}
               onAddTask={() => openTaskForm()}
+              onUpload={() => { ensureCloudStorage().then(ok => ok && setActiveTab('upload')).catch(error => showError('Could not check cloud storage', error)); }}
             />
+          ) : activeTab === 'chat' ? (
+            <ChatScreen token={token} user={user} onError={error => showError('Chat error', error)} />
           ) : activeTab === 'projects' ? (
             <ProjectsScreen
               projects={projects} tasks={tasks}
@@ -345,6 +413,8 @@ export default function App() {
               media={media}
               uploading={uploadingMedia}
               onUpload={addLibraryMedia}
+              onNeedCloudConnection={ensureCloudStorage}
+              checkingCloud={checkingCloud}
               onDelete={removeLibraryMedia}
               onError={error => showError('Could not select media', error)}
             />
@@ -354,9 +424,10 @@ export default function App() {
               theme={preferences.theme} notifications={preferences.notifications}
               onToggleTheme={preferences.toggleTheme}
               onToggleNotifications={preferences.toggleNotifications}
+              onConnectCloud={() => setConnectCloudOpen(true)}
             />
           )}
-          <BottomNav active={activeTab} onChange={setActiveTab} />
+          {!connectCloudOpen && <BottomNav active={activeTab} onChange={setActiveTab} />}
           <ProjectDetailModal
             visible={projectDetailOpen} project={selectedProject} tasks={tasks}
             onClose={() => setProjectDetailOpen(false)} onTask={openTaskDetail}
@@ -387,6 +458,7 @@ export default function App() {
             onClose={() => setProjectFormOpen(false)} onSave={saveProject}
           />
           <ConfirmDialog config={confirm} onCancel={closeConfirm} />
+          <CloudinaryAlert visible={cloudAlertOpen} onConfirm={() => { setCloudAlertOpen(false); setConnectCloudOpen(true); }} />
         </SafeAreaView>
         {successModal.visible && successModal.host === 'screen' && (
           <DraggableSuccessModal

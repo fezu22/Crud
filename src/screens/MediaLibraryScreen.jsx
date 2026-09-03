@@ -129,7 +129,7 @@ function PlayerModal({ item, onClose, onError }) {
     </Modal>
   );
 }
-export default function MediaLibraryScreen({ media, uploading, onUpload, onDelete, onError }) {
+export default function MediaLibraryScreen({ media, uploading, onUpload, onDelete, onError, onNeedCloudConnection, checkingCloud }) {
   const { colorScheme } = useColorScheme();
   const dark = colorScheme === 'dark';
   const [filter, setFilter] = useState('all');
@@ -141,6 +141,8 @@ export default function MediaLibraryScreen({ media, uploading, onUpload, onDelet
 
   async function chooseFile(mediaType) {
     try {
+      if (checkingCloud) return;
+      if (onNeedCloudConnection && !(await onNeedCloudConnection())) return;
       const [file] = await pick({ type: [mediaType === 'video' ? types.video : types.audio] });
       if (!file?.uri || file.hasRequestedType === false) throw new Error(`Please choose a valid ${mediaType} file.`);
       await onUpload(
@@ -165,10 +167,10 @@ export default function MediaLibraryScreen({ media, uploading, onUpload, onDelet
             <View style={styles.header}>
               <View><Text style={[styles.eyebrow, dark && darkStyles.mutedText]}>Library</Text><Text style={[styles.title, dark && darkStyles.text]}>Media</Text></View>
               <View style={styles.headerActions}>
-                <TouchableOpacity disabled={uploading} style={styles.videoUploadButton} onPress={() => chooseFile('video')}>
+                <TouchableOpacity disabled={uploading || checkingCloud} style={styles.videoUploadButton} onPress={() => chooseFile('video')}>
                   <Text style={styles.videoUploadIcon}>▣</Text>
                 </TouchableOpacity>
-                <TouchableOpacity disabled={uploading} style={styles.audioUploadButton} onPress={() => chooseFile('audio')}>
+                <TouchableOpacity disabled={uploading || checkingCloud} style={styles.audioUploadButton} onPress={() => chooseFile('audio')}>
                   <Text style={styles.audioUploadIcon}>♫</Text>
                 </TouchableOpacity>
               </View>
@@ -212,10 +214,10 @@ export default function MediaLibraryScreen({ media, uploading, onUpload, onDelet
             <Text style={[styles.emptyCopy, dark && darkStyles.mutedText]}>Keep your videos and audio in one place. Choose a file to add it to your library.</Text>
             {!libraryItems.length ? (
               <View style={styles.emptyActions}>
-                <TouchableOpacity disabled={uploading} style={styles.emptyVideoButton} onPress={() => chooseFile('video')}>
+                <TouchableOpacity disabled={uploading || checkingCloud} style={styles.emptyVideoButton} onPress={() => chooseFile('video')}>
                   <Text style={styles.emptyVideoText}>▣  Add video</Text>
                 </TouchableOpacity>
-                <TouchableOpacity disabled={uploading} style={styles.emptyAudioButton} onPress={() => chooseFile('audio')}>
+                <TouchableOpacity disabled={uploading || checkingCloud} style={styles.emptyAudioButton} onPress={() => chooseFile('audio')}>
                   <Text style={styles.emptyAudioText}>♫  Add audio</Text>
                 </TouchableOpacity>
               </View>

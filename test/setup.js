@@ -3,6 +3,7 @@ import mockAsyncStorage from '@react-native-async-storage/async-storage/jest';
 import { AccessibilityInfo } from 'react-native';
 
 jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
+jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
 jest.mock('@notifee/react-native', () => ({
   __esModule: true,
   default: {

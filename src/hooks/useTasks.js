@@ -13,6 +13,7 @@ function generateBatchId() {
 
 export default function useTasks({
   token,
+  user,
   ask,
   showError,
   showSuccess,
@@ -67,7 +68,7 @@ export default function useTasks({
       const batchId = generateBatchId();
       const uploaded = await Promise.all(
         (form.newImages || []).map(image =>
-          uploadMedia(image, form.title, token, 'taskAttachment', batchId),
+          uploadMedia(image, form.title, token, 'taskAttachment', batchId, false, { cloudName: user?.cloudName, uploadPreset: user?.uploadPreset }),
         ),
       );
       const imageUrls = [
