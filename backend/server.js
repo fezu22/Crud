@@ -8,6 +8,7 @@ const authRoutes = require('./routes/authRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const User = require('./models/User');
 
 const app = express();
 app.use(cors());
@@ -45,10 +46,19 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/crudapp';
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+
+async function ensureConfiguredAdmin() {
+  if (!ADMIN_EMAIL) return;
+  const admin = await User.findOne({ email: ADMIN_EMAIL });
+  if (!admin) return console.warn(`Configured ADMIN_EMAIL was not found: ${ADMIN_EMAIL}`);
+  if (admin.role !== 'admin') { admin.role = 'admin'; await admin.save(); console.log(`Admin role ensured for ${ADMIN_EMAIL}`); }
+}
 
 mongoose
   .connect(MONGO_URI)
-  .then(function () {
+  .then(async function () {
+    await ensureConfiguredAdmin();
     console.log('✅ Connected to MongoDB at:', MONGO_URI);
     app.listen(PORT, '0.0.0.0', function () {
       console.log('🚀 Server running on port ' + PORT + ' (http://localhost:' + PORT + ')');
