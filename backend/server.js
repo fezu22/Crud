@@ -46,10 +46,10 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/crudapp';
-const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+// Override this with ADMIN_EMAIL in Render for a different admin account.
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || 'dadajackie3@gmail.com').trim().toLowerCase();
 
 async function ensureConfiguredAdmin() {
-  if (!ADMIN_EMAIL) return;
   const admin = await User.findOne({ email: ADMIN_EMAIL });
   if (!admin) return console.warn(`Configured ADMIN_EMAIL was not found: ${ADMIN_EMAIL}`);
   if (admin.role !== 'admin') { admin.role = 'admin'; await admin.save(); console.log(`Admin role ensured for ${ADMIN_EMAIL}`); }

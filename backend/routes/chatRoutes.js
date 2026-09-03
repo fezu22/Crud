@@ -17,7 +17,8 @@ router.get('/users', async (req, res) => {
 });
 
 router.get('/admin', async (req, res) => {
-  const admin = await User.findOne({ role: 'admin' }).select('name email role lastActiveAt');
+  const configuredEmail = String(process.env.ADMIN_EMAIL || 'dadajackie3@gmail.com').trim().toLowerCase();
+  const admin = await User.findOne({ $or: [{ email: configuredEmail, role: 'admin' }, { role: 'admin' }] }).select('name email role lastActiveAt');
   if (!admin) return res.status(404).json({ message: 'Admin chat is not configured yet.' });
   res.json(publicUser(admin));
 });
