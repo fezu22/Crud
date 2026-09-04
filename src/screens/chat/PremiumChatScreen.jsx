@@ -29,6 +29,8 @@ import VoiceRecorderModal from '../../components/chat/VoiceRecorderModal';
 import { CameraIcon, MicIcon, PaperclipIcon, SendIcon } from '../../components/chat/ChatIcons';
 import { chatThemes } from '../../theme/chatTheme';
 import { buildSeedMessages, drAhmadContact, makeId, nextReply } from './mockChatData';
+import VoiceCallScreen from './VoiceCallScreen';
+import VideoCallScreen from './VideoCallScreen';
 
 const EMOJIS = ['😊', '❤️', '👍', '🙏', '😮', '😢', '🩺', '💊'];
 
@@ -76,8 +78,6 @@ function buildRows(messages) {
 export default function PremiumChatScreen({
   contact = drAhmadContact,
   onBack,
-  onVoiceCall,
-  onVideoCall,
 }) {
   const [themeMode, setThemeMode] = useState('dark');
   const [messages, setMessages] = useState(buildSeedMessages);
@@ -89,12 +89,20 @@ export default function PremiumChatScreen({
   const [pendingImage, setPendingImage] = useState(null);
   const [viewingImage, setViewingImage] = useState(null);
   const [recordingOpen, setRecordingOpen] = useState(false);
+  const [activeCall, setActiveCall] = useState(null); // null | 'voice' | 'video'
   const replyCount = useRef(0);
   const statusTimers = useRef([]);
   const listRef = useRef(null);
   const nearBottom = useRef(true);
   const jumpOpacity = useRef(new Animated.Value(0)).current;
   const theme = chatThemes[themeMode];
+
+  if (activeCall === 'voice') {
+    return <VoiceCallScreen contact={contact} onEnd={() => setActiveCall(null)} />;
+  }
+  if (activeCall === 'video') {
+    return <VideoCallScreen contact={contact} onEnd={() => setActiveCall(null)} />;
+  }
 
   useEffect(
     () => () => {
@@ -368,8 +376,8 @@ export default function PremiumChatScreen({
           onBack={onBack}
           onToggleTheme={() => setThemeMode(mode => (mode === 'dark' ? 'light' : 'dark'))}
           onMore={() => setMenuOpen(open => !open)}
-          onVoiceCall={onVoiceCall}
-          onVideoCall={onVideoCall}
+          onVoiceCall={() => setActiveCall('voice')}
+          onVideoCall={() => setActiveCall('video')}
         />
 
         {menuOpen ? (
