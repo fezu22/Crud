@@ -5,6 +5,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   LayoutAnimation,
+  PermissionsAndroid,
   Platform,
   StatusBar,
   StyleSheet,
@@ -23,6 +24,8 @@ import ImageMessage from '../../components/chat/ImageMessage';
 import ImagePreviewModal from '../../components/chat/ImagePreviewModal';
 import ImageViewerModal from '../../components/chat/ImageViewerModal';
 import MessageBubble from '../../components/chat/MessageBubble';
+import VoiceMessageBubble, { seededWaveform } from '../../components/chat/VoiceMessageBubble';
+import VoiceRecorderModal from '../../components/chat/VoiceRecorderModal';
 import { CameraIcon, MicIcon, PaperclipIcon, SendIcon } from '../../components/chat/ChatIcons';
 import { chatThemes } from '../../theme/chatTheme';
 import { buildSeedMessages, drAhmadContact, makeId, nextReply } from './mockChatData';
@@ -85,6 +88,7 @@ export default function PremiumChatScreen({
   const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [pendingImage, setPendingImage] = useState(null);
   const [viewingImage, setViewingImage] = useState(null);
+  const [recordingOpen, setRecordingOpen] = useState(false);
   const replyCount = useRef(0);
   const statusTimers = useRef([]);
   const listRef = useRef(null);
@@ -247,6 +251,44 @@ export default function PremiumChatScreen({
     scheduleReply();
   };
 
+  const startVoiceRecording = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone permission',
+            message: 'Medi needs microphone access to record voice messages.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Cancel',
+          },
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert(
+            'Microphone unavailable',
+            'Voice messages need microphone access. Enable it in Settings to record.',
+          );
+          return;
+        }
+      } catch (error) {
+        Alert.alert('Microphone unavailable', error?.message || String(error));
+        return;
+      }
+    }
+    setRecordingOpen(true);
+  };
+
+  const sendVoiceMessage = seconds => {
+    setRecordingOpen(false);
+    appendOutgoing({
+      _id: makeId(),
+      type: 'voice',
+      duration: seconds,
+      waveform: seededWaveform(`${Date.now()}`),
+    });
+    scheduleReply();
+  };
+
   const renderAttachment = message => {
     if (message.type === 'image') {
       return (
@@ -261,6 +303,9 @@ export default function PremiumChatScreen({
       return (
         <DocumentBubble message={message} theme={theme} mine={message.sender === 'me'} />
       );
+    }
+    if (message.type === 'voice') {
+      return <VoiceMessageBubble message={message} theme={theme} mine={message.sender === 'me'} />;
     }
     return null;
   };
@@ -431,7 +476,7 @@ export default function PremiumChatScreen({
               <SendIcon color="#FFFFFF" size={19} />
             </TouchableOpacity>
           ) : (
-            <ComposerButton onPress={() => {}} theme={theme} accessibilityLabel="Record voice message">
+            <ComposerButton onPress={startVoiceRecording} theme={theme} accessibilityLabel="Record voice message">
               <MicIcon color={theme.muted} size={20} />
             </ComposerButton>
           )}
@@ -457,6 +502,12 @@ export default function PremiumChatScreen({
           image={viewingImage}
           theme={theme}
           onClose={() => setViewingImage(null)}
+        />
+        <VoiceRecorderModal
+          visible={recordingOpen}
+          theme={theme}
+          onCancel={() => setRecordingOpen(false)}
+          onSend={sendVoiceMessage}
         />
       </View>
     </KeyboardAvoidingView>

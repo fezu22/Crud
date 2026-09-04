@@ -60,6 +60,14 @@ export function buildSeedMessages() {
       createdAt: minutesAgo(172),
       status: 'read',
     },
+    {
+      _id: 'seed-6',
+      type: 'voice',
+      duration: 14,
+      sender: 'them',
+      createdAt: minutesAgo(168),
+      status: 'read',
+    },
   ];
 }
 
