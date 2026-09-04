@@ -57,7 +57,7 @@ export default function ImagePreviewModal({ visible, image, theme, onCancel, onS
                 <Text style={[styles.cancelText, { color: theme.muted }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.button, { backgroundColor: theme.green }]}
+                style={[styles.button, { backgroundColor: theme.primary }]}
                 onPress={() => onSend(caption.trim())}>
                 <Text style={styles.sendText}>Send</Text>
               </TouchableOpacity>
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 260,
     borderRadius: 14,
-    backgroundColor: '#101E2C',
+    backgroundColor: '#211F2B',
   },
   captionInput: {
     marginTop: 12,

@@ -74,7 +74,7 @@ export default function VoiceMessageBubble({ message, mine, theme }) {
     }, 100);
   };
 
-  const playedColor = mine ? '#D1FAE5' : theme.green;
+  const playedColor = mine ? '#C9BCFF' : theme.primary;
   const idleColor = mine ? 'rgba(255,255,255,0.45)' : theme.line;
   const progress = elapsed / duration;
 
@@ -82,7 +82,7 @@ export default function VoiceMessageBubble({ message, mine, theme }) {
     <View style={styles.row}>
       <TouchableOpacity
         onPress={toggle}
-        style={[styles.playButton, { backgroundColor: mine ? 'rgba(255,255,255,0.18)' : theme.green }]}
+        style={[styles.playButton, { backgroundColor: mine ? 'rgba(255,255,255,0.18)' : theme.primary }]}
         accessibilityLabel={playing ? 'Pause voice message' : 'Play voice message'}>
         {playing ? (
           <View style={styles.pauseBars}>

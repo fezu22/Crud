@@ -32,21 +32,21 @@ export default function AttachmentSheet({
           <Text style={[styles.title, { color: theme.ink }]}>Share</Text>
 
           <OptionRow
-            icon={<GalleryGlyph color={theme.greenLight} />}
+            icon={<GalleryGlyph color={theme.primaryLight} />}
             title="Gallery"
             subtitle="Send a photo from your device"
             theme={theme}
             onPress={onGallery}
           />
           <OptionRow
-            icon={<CameraIcon color={theme.greenLight} size={19} />}
+            icon={<CameraIcon color={theme.primaryLight} size={19} />}
             title="Camera"
             subtitle="Take a new photo"
             theme={theme}
             onPress={onCamera}
           />
           <OptionRow
-            icon={<DocumentIcon color={theme.greenLight} size={20} />}
+            icon={<DocumentIcon color={theme.primaryLight} size={20} />}
             title="Document"
             subtitle="Share a PDF or other file"
             theme={theme}

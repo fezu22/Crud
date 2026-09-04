@@ -74,7 +74,7 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend })
           </View>
 
           <View style={[styles.waveCard, { backgroundColor: theme.surfaceAlt }]}>
-            <MicIcon color={theme.greenLight} size={22} />
+            <MicIcon color={theme.primaryLight} size={22} />
             <Text style={[styles.timer, { color: theme.ink }]}>{formatDuration(seconds)}</Text>
             <Text style={[styles.hint, { color: theme.muted }]}>
               Recording voice message… speak now
@@ -88,7 +88,7 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend })
               <Text style={[styles.cancelText, { color: theme.muted }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.green }]}
+              style={[styles.button, { backgroundColor: theme.primary }]}
               onPress={() => onSend(Math.max(1, seconds))}>
               <Text style={styles.sendText}>Send</Text>
             </TouchableOpacity>

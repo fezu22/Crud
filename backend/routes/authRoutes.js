@@ -13,7 +13,7 @@ const generateToken = userId => {
     'default_jwt_secret_key_change_in_production';
 
   return jwt.sign({ id: userId }, secret, {
-    expiresIn: '7d',
+    expiresIn: '30d',
   });
 };
 

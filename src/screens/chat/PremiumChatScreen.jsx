@@ -26,13 +26,11 @@ import ImageViewerModal from '../../components/chat/ImageViewerModal';
 import MessageBubble from '../../components/chat/MessageBubble';
 import VoiceMessageBubble, { seededWaveform } from '../../components/chat/VoiceMessageBubble';
 import VoiceRecorderModal from '../../components/chat/VoiceRecorderModal';
-import { CameraIcon, MicIcon, PaperclipIcon, SendIcon } from '../../components/chat/ChatIcons';
-import { chatThemes } from '../../theme/chatTheme';
-import { buildSeedMessages, drAhmadContact, makeId, nextReply } from './mockChatData';
+import { MicIcon, PaperclipIcon, SendIcon } from '../../components/chat/ChatIcons';
+import { chatTheme } from '../../theme/chatTheme';
+import { farazContact, makeId, nextReply } from './mockChatData';
 import VoiceCallScreen from './VoiceCallScreen';
 import VideoCallScreen from './VideoCallScreen';
-
-const EMOJIS = ['😊', '❤️', '👍', '🙏', '😮', '😢', '🩺', '💊'];
 
 function sameDay(a, b) {
   if (!b) return false;
@@ -55,9 +53,6 @@ function dayLabel(dateString) {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
 }
 
-/**
- * Builds the FlatList rows: messages interleaved with day separators.
- */
 function buildRows(messages) {
   const rows = [];
   messages.forEach((message, index) => {
@@ -71,19 +66,14 @@ function buildRows(messages) {
 }
 
 /**
- * Premium demo conversation with Dr. Ahmad. Real text chat with Medi users
- * still flows through ChatThread; this screen demonstrates the full chat
- * design and works standalone with local state.
+ * Faraz chat screen: purple outgoing bubbles, dark incoming bubbles,
+ * timestamps with sent/delivered/read ticks, image/document/voice sharing
+ * and mock voice/video calls. Rendered inside the Chat tab so the app's
+ * bottom navigation stays in place.
  */
-export default function PremiumChatScreen({
-  contact = drAhmadContact,
-  onBack,
-}) {
-  const [themeMode, setThemeMode] = useState('dark');
-  const [messages, setMessages] = useState(buildSeedMessages);
+export default function PremiumChatScreen({ contact = farazContact, onBack }) {
+  const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
-  const [emojiOpen, setEmojiOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showJump, setShowJump] = useState(false);
   const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [pendingImage, setPendingImage] = useState(null);
@@ -95,7 +85,7 @@ export default function PremiumChatScreen({
   const listRef = useRef(null);
   const nearBottom = useRef(true);
   const jumpOpacity = useRef(new Animated.Value(0)).current;
-  const theme = chatThemes[themeMode];
+  const theme = chatTheme;
 
   useEffect(
     () => () => {
@@ -130,8 +120,8 @@ export default function PremiumChatScreen({
     nearBottom.current = distanceFromBottom < 140;
   };
 
-  // Call screens replace the chat entirely; placed after every hook so the
-  // hook order stays stable across renders.
+  // Call screens replace the chat view; kept after every hook so the hook
+  // order stays stable across renders.
   if (activeCall === 'voice') {
     return <VoiceCallScreen contact={contact} onEnd={() => setActiveCall(null)} />;
   }
@@ -189,6 +179,14 @@ export default function PremiumChatScreen({
     appendMessages([message]);
     scheduleStatus(message._id);
     return message;
+  };
+
+  const sendText = () => {
+    const value = text.trim();
+    if (!value) return;
+    setText('');
+    appendOutgoing({ _id: makeId(), type: 'text', text: value });
+    scheduleReply();
   };
 
   const handlePickerResponse = response => {
@@ -320,26 +318,6 @@ export default function PremiumChatScreen({
     return null;
   };
 
-  const sendText = () => {
-    const value = text.trim();
-    if (!value) return;
-    setEmojiOpen(false);
-    setText('');
-    const outgoingId = makeId();
-    appendMessages([
-      {
-        _id: outgoingId,
-        type: 'text',
-        text: value,
-        sender: 'me',
-        createdAt: new Date().toISOString(),
-        status: 'sent',
-      },
-    ]);
-    scheduleStatus(outgoingId);
-    scheduleReply();
-  };
-
   const renderItem = ({ item }) => {
     if (item.kind === 'day') {
       return (
@@ -366,37 +344,16 @@ export default function PremiumChatScreen({
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <StatusBar
-        barStyle={theme.barStyle}
-        backgroundColor={theme.surface}
-      />
+      <StatusBar barStyle={theme.barStyle} backgroundColor={theme.background} />
       <View style={{ flex: 1, backgroundColor: theme.background }}>
         <ChatBackground theme={theme} />
         <ChatHeader
           theme={theme}
           contact={contact}
           onBack={onBack}
-          onToggleTheme={() => setThemeMode(mode => (mode === 'dark' ? 'light' : 'dark'))}
-          onMore={() => setMenuOpen(open => !open)}
           onVoiceCall={() => setActiveCall('voice')}
           onVideoCall={() => setActiveCall('video')}
         />
-
-        {menuOpen ? (
-          <View style={[styles.menu, { backgroundColor: theme.surface, borderColor: theme.line }]}>
-            <MenuItem label="View contact" theme={theme} onPress={() => setMenuOpen(false)} />
-            <MenuItem
-              label="Clear conversation"
-              danger
-              theme={theme}
-              onPress={() => {
-                setMenuOpen(false);
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setMessages([]);
-              }}
-            />
-          </View>
-        ) : null}
 
         <FlatList
           ref={listRef}
@@ -407,18 +364,13 @@ export default function PremiumChatScreen({
           onContentSizeChange={() => {
             if (nearBottom.current) scrollToBottom();
           }}
-          onLayout={() => scrollToBottom()}
           scrollEventThrottle={60}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={[styles.emptyTitle, { color: theme.ink }]}>
-                Start the conversation
-              </Text>
               <Text style={[styles.emptyText, { color: theme.muted }]}>
-                Send a message to {contact.name}. It stays on this device as a
-                demo.
+                No messages yet. Say hello to {contact.name}!
               </Text>
             </View>
           }
@@ -428,50 +380,24 @@ export default function PremiumChatScreen({
           pointerEvents={showJump ? 'auto' : 'none'}
           style={[styles.jumpButton, { opacity: jumpOpacity, backgroundColor: theme.surfaceAlt }]}>
           <TouchableOpacity onPress={() => scrollToBottom(true)} accessibilityLabel="Scroll to latest">
-            <Text style={{ color: theme.greenLight, fontSize: 20, fontWeight: '800' }}>↓</Text>
+            <Text style={{ color: theme.primaryLight, fontSize: 20, fontWeight: '800' }}>↓</Text>
           </TouchableOpacity>
         </Animated.View>
 
-        {emojiOpen ? (
-          <View style={[styles.emojiStrip, { backgroundColor: theme.surface, borderColor: theme.line }]}>
-            {EMOJIS.map(emoji => (
-              <TouchableOpacity
-                key={emoji}
-                style={styles.emojiCell}
-                onPress={() => setText(current => current + emoji)}>
-                <Text style={{ fontSize: 24 }}>{emoji}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
-
-        <View
-          style={[
-            styles.composer,
-            { backgroundColor: theme.surface, borderTopColor: theme.line },
-          ]}>
-          <ComposerButton onPress={() => setEmojiOpen(open => !open)} theme={theme}>
-            <Text style={{ fontSize: 19 }}>{emojiOpen ? '✕' : '😊'}</Text>
-          </ComposerButton>
-          <ComposerButton
+        <View style={[styles.composer, { backgroundColor: theme.background }]}>
+          <TouchableOpacity
+            style={styles.composerButton}
             onPress={() => setAttachmentOpen(true)}
-            theme={theme}
+            hitSlop={4}
             accessibilityLabel="Attach a file">
             <PaperclipIcon color={theme.muted} size={19} />
-          </ComposerButton>
-          <ComposerButton onPress={takeWithCamera} theme={theme} accessibilityLabel="Take a photo">
-            <CameraIcon color={theme.muted} size={19} />
-          </ComposerButton>
+          </TouchableOpacity>
           <TextInput
             style={[
               styles.input,
-              {
-                backgroundColor: theme.composerField,
-                borderColor: theme.line,
-                color: theme.ink,
-              },
+              { backgroundColor: theme.composerField, color: theme.ink },
             ]}
-            placeholder="Write a message…"
+            placeholder="Write a message..."
             placeholderTextColor={theme.muted}
             value={text}
             onChangeText={setText}
@@ -480,15 +406,19 @@ export default function PremiumChatScreen({
           />
           {text.trim() ? (
             <TouchableOpacity
-              style={[styles.sendButton, { backgroundColor: theme.green }]}
+              style={[styles.sendButton, { backgroundColor: theme.primary }]}
               onPress={sendText}
               accessibilityLabel="Send message">
-              <SendIcon color="#FFFFFF" size={19} />
+              <SendIcon color="#FFFFFF" size={18} />
             </TouchableOpacity>
           ) : (
-            <ComposerButton onPress={startVoiceRecording} theme={theme} accessibilityLabel="Record voice message">
+            <TouchableOpacity
+              style={styles.composerButton}
+              onPress={startVoiceRecording}
+              hitSlop={4}
+              accessibilityLabel="Record voice message">
               <MicIcon color={theme.muted} size={20} />
-            </ComposerButton>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -524,31 +454,6 @@ export default function PremiumChatScreen({
   );
 }
 
-function ComposerButton({ children, onPress, theme, accessibilityLabel }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={styles.composerButton}
-      hitSlop={4}
-      accessibilityLabel={accessibilityLabel}>
-      {children}
-    </TouchableOpacity>
-  );
-}
-
-function MenuItem({ label, onPress, theme, danger }) {
-  return (
-    <TouchableOpacity
-      style={styles.menuItem}
-      onPress={onPress}
-      hitSlop={4}>
-      <Text style={{ color: danger ? theme.danger : theme.ink, fontWeight: '600' }}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
   listContent: {
     paddingVertical: 14,
@@ -572,22 +477,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 40,
-    gap: 6,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '800',
+    paddingHorizontal: 48,
   },
   emptyText: {
     textAlign: 'center',
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 20,
   },
   jumpButton: {
     position: 'absolute',
     right: 16,
-    bottom: 96,
+    bottom: 86,
     width: 42,
     height: 42,
     borderRadius: 21,
@@ -599,63 +499,35 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 5,
   },
-  menu: {
-    position: 'absolute',
-    top: 64,
-    right: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 4,
-    elevation: 8,
-    zIndex: 20,
-    minWidth: 190,
-  },
-  menuItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-  },
-  emojiStrip: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    borderTopWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  emojiCell: {
-    padding: 8,
-  },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    borderTopWidth: 1,
-    paddingHorizontal: 6,
-    paddingTop: 6,
-    paddingBottom: 8,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 10,
+    gap: 8,
   },
   composerButton: {
-    width: 38,
-    height: 40,
+    width: 40,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
   },
   input: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 46,
     maxHeight: 110,
-    borderRadius: 21,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
+    borderRadius: 23,
+    paddingHorizontal: 18,
+    paddingTop: 13,
+    paddingBottom: 13,
     fontSize: 15,
-    marginHorizontal: 2,
   },
   sendButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 4,
   },
 });

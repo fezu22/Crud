@@ -23,8 +23,8 @@ function extensionOf(message) {
  */
 export default function DocumentBubble({ message, theme, mine }) {
   return (
-    <View style={[styles.card, { backgroundColor: mine ? 'rgba(6, 78, 59, 0.55)' : theme.surfaceAlt }]}>
-      <View style={[styles.iconSquare, { backgroundColor: theme.green }]}>
+    <View style={[styles.card, { backgroundColor: mine ? 'rgba(108, 77, 246, 0.35)' : theme.surfaceAlt }]}>
+      <View style={[styles.iconSquare, { backgroundColor: theme.primary }]}>
         <DocumentIcon color="#FFFFFF" size={20} />
       </View>
       <View style={styles.meta}>

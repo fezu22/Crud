@@ -126,7 +126,7 @@ export function MoreIcon({ color, size = 20 }) {
   );
 }
 
-export function ThemeIcon({ dark, size = 20, darkColor = '#FCD34D', lightColor = '#10B981' }) {
+export function ThemeIcon({ dark, size = 20, darkColor = '#FCD34D', lightColor = '#8B73FF' }) {
   return (
     <View
       style={{

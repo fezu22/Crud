@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { PermissionsAndroid, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import CallButton, { CallLabel } from '../../components/chat/CallButton';
 import { CameraIcon, MicIcon, PhoneIcon } from '../../components/chat/ChatIcons';
-import { chatThemes } from '../../theme/chatTheme';
+import { chatTheme } from '../../theme/chatTheme';
 import { formatDuration } from '../../components/chat/VoiceMessageBubble';
 
 function SwitchCameraIcon({ color }) {
@@ -25,7 +25,7 @@ function SwitchCameraIcon({ color }) {
  * working even when they are denied.
  */
 export default function VideoCallScreen({ contact, onEnd }) {
-  const theme = chatThemes.dark;
+  const theme = chatTheme;
   const [seconds, setSeconds] = useState(0);
   const [connected, setConnected] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -72,14 +72,14 @@ export default function VideoCallScreen({ contact, onEnd }) {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="light-content" backgroundColor="#04070C" />
-      <View style={[styles.remote, { backgroundColor: theme.outgoingBase }]} />
+      <StatusBar barStyle="light-content" backgroundColor="#100E16" />
+      <View style={[styles.remote, { backgroundColor: theme.background }]} />
       <View style={styles.remoteGlow} />
 
       <View style={styles.remoteCenter}>
         {cameraOn && connected ? (
           <View style={styles.videoPlaceholder}>
-            <View style={[styles.videoBadge, { backgroundColor: theme.greenLight }]} />
+            <View style={[styles.videoBadge, { backgroundColor: theme.primaryLight }]} />
             <Text style={styles.videoBadgeText}>LIVE</Text>
           </View>
         ) : null}
@@ -116,13 +116,13 @@ export default function VideoCallScreen({ contact, onEnd }) {
       <View style={styles.controls}>
         <View style={styles.controlGroup}>
           <CallButton active={muted} onPress={() => setMuted(current => !current)} accessibilityLabel="Mute">
-            <MicIcon color={muted ? '#059669' : '#FFFFFF'} size={22} />
+            <MicIcon color={muted ? '#6C4DF6' : '#FFFFFF'} size={22} />
           </CallButton>
           <CallLabel>{muted ? 'Unmute' : 'Mute'}</CallLabel>
         </View>
         <View style={styles.controlGroup}>
           <CallButton active={!cameraOn} onPress={() => setCameraOn(current => !current)} accessibilityLabel="Camera">
-            <CameraIcon color={!cameraOn ? '#059669' : '#FFFFFF'} size={22} />
+            <CameraIcon color={!cameraOn ? '#6C4DF6' : '#FFFFFF'} size={22} />
           </CallButton>
           <CallLabel>{cameraOn ? 'Camera on' : 'Camera off'}</CallLabel>
         </View>
@@ -134,7 +134,7 @@ export default function VideoCallScreen({ contact, onEnd }) {
         </View>
         <View style={styles.controlGroup}>
           <CallButton active={speaker} onPress={() => setSpeaker(current => !current)} accessibilityLabel="Speaker">
-            <Text style={{ color: speaker ? '#059669' : '#FFFFFF', fontSize: 17, fontWeight: '900' }}>◉</Text>
+            <Text style={{ color: speaker ? '#6C4DF6' : '#FFFFFF', fontSize: 17, fontWeight: '900' }}>◉</Text>
           </CallButton>
           <CallLabel>{speaker ? 'Speaker on' : 'Speaker'}</CallLabel>
         </View>
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     width: 340,
     height: 340,
     borderRadius: 170,
-    backgroundColor: 'rgba(16, 185, 129, 0.4)',
+    backgroundColor: 'rgba(108, 77, 246, 0.45)',
   },
   remoteCenter: {
     flex: 1,
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     width: 104,
     height: 148,
     borderRadius: 16,
-    backgroundColor: '#0C1822',
+    backgroundColor: '#211F2B',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
     overflow: 'hidden',
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.16)',
+    backgroundColor: 'rgba(108, 77, 246, 0.18)',
   },
   selfCameraOff: {
     flex: 1,

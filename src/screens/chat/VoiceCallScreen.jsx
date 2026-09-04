@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import CallButton, { CallLabel } from '../../components/chat/CallButton';
 import { MicIcon, PhoneIcon } from '../../components/chat/ChatIcons';
-import { chatThemes } from '../../theme/chatTheme';
+import { chatTheme } from '../../theme/chatTheme';
 import { formatDuration } from '../../components/chat/VoiceMessageBubble';
 
 const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
@@ -33,7 +33,7 @@ function KeypadIcon({ color }) {
  * ringing and a running duration locally and always stays responsive.
  */
 export default function VoiceCallScreen({ contact, onEnd }) {
-  const theme = chatThemes.dark;
+  const theme = chatTheme;
   const [status, setStatus] = useState('calling');
   const [seconds, setSeconds] = useState(0);
   const [muted, setMuted] = useState(false);
@@ -70,10 +70,10 @@ export default function VoiceCallScreen({ contact, onEnd }) {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.outgoingBase} />
-      <View style={[styles.backdrop, { backgroundColor: theme.outgoingBase }]} />
-      <View style={[styles.glowTop, { backgroundColor: theme.greenLight }]} />
-      <View style={[styles.glowBottom, { backgroundColor: theme.green }]} />
+      <StatusBar barStyle="light-content" backgroundColor={theme.background} />
+      <View style={[styles.backdrop, { backgroundColor: theme.background }]} />
+      <View style={[styles.glowTop, { backgroundColor: theme.primaryLight }]} />
+      <View style={[styles.glowBottom, { backgroundColor: theme.primary }]} />
 
       <View style={styles.identityArea}>
         <View style={styles.avatarWrap}>
@@ -118,7 +118,7 @@ export default function VoiceCallScreen({ contact, onEnd }) {
             active={muted}
             onPress={() => setMuted(current => !current)}
             accessibilityLabel="Mute">
-            <MicIcon color={muted ? '#059669' : '#FFFFFF'} size={22} />
+            <MicIcon color={muted ? '#6C4DF6' : '#FFFFFF'} size={22} />
           </CallButton>
           <CallLabel>{muted ? 'Unmute' : 'Mute'}</CallLabel>
         </View>
@@ -127,7 +127,7 @@ export default function VoiceCallScreen({ contact, onEnd }) {
             active={speaker}
             onPress={() => setSpeaker(current => !current)}
             accessibilityLabel="Speaker">
-            <SpeakerIcon color={speaker ? '#059669' : '#FFFFFF'} size={22} />
+            <SpeakerIcon color={speaker ? '#6C4DF6' : '#FFFFFF'} size={22} />
           </CallButton>
           <CallLabel>{speaker ? 'Speaker on' : 'Speaker'}</CallLabel>
         </View>
@@ -136,7 +136,7 @@ export default function VoiceCallScreen({ contact, onEnd }) {
             active={keypadOpen}
             onPress={() => setKeypadOpen(current => !current)}
             accessibilityLabel="Keypad">
-            <KeypadIcon color={keypadOpen ? '#059669' : '#FFFFFF'} />
+            <KeypadIcon color={keypadOpen ? '#6C4DF6' : '#FFFFFF'} />
           </CallButton>
           <CallLabel>Keypad</CallLabel>
         </View>
