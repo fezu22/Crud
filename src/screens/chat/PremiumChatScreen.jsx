@@ -97,13 +97,6 @@ export default function PremiumChatScreen({
   const jumpOpacity = useRef(new Animated.Value(0)).current;
   const theme = chatThemes[themeMode];
 
-  if (activeCall === 'voice') {
-    return <VoiceCallScreen contact={contact} onEnd={() => setActiveCall(null)} />;
-  }
-  if (activeCall === 'video') {
-    return <VideoCallScreen contact={contact} onEnd={() => setActiveCall(null)} />;
-  }
-
   useEffect(
     () => () => {
       statusTimers.current.forEach(timer => clearTimeout(timer));
@@ -136,6 +129,15 @@ export default function PremiumChatScreen({
     }
     nearBottom.current = distanceFromBottom < 140;
   };
+
+  // Call screens replace the chat entirely; placed after every hook so the
+  // hook order stays stable across renders.
+  if (activeCall === 'voice') {
+    return <VoiceCallScreen contact={contact} onEnd={() => setActiveCall(null)} />;
+  }
+  if (activeCall === 'video') {
+    return <VideoCallScreen contact={contact} onEnd={() => setActiveCall(null)} />;
+  }
 
   const appendMessages = next => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
