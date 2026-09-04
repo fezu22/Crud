@@ -171,7 +171,7 @@ mongoose
   .then(async () => {
     await ensureConfiguredAdminAtStartup();
 
-    console.log('Connected to MongoDB at:', MONGO_URI);
+    console.log('Connected to MongoDB');
 
     httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(
