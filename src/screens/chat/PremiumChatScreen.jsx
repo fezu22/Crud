@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   FlatList,
   KeyboardAvoidingView,
@@ -12,9 +13,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import { pick, types } from '@react-native-documents/picker';
+import AttachmentSheet from '../../components/chat/AttachmentSheet';
 import ChatBackground from '../../components/chat/ChatBackground';
 import ChatHeader from '../../components/chat/ChatHeader';
-import MessageBubble, { formatClock } from '../../components/chat/MessageBubble';
+import DocumentBubble from '../../components/chat/DocumentBubble';
+import ImageMessage from '../../components/chat/ImageMessage';
+import ImagePreviewModal from '../../components/chat/ImagePreviewModal';
+import ImageViewerModal from '../../components/chat/ImageViewerModal';
+import MessageBubble from '../../components/chat/MessageBubble';
 import { CameraIcon, MicIcon, PaperclipIcon, SendIcon } from '../../components/chat/ChatIcons';
 import { chatThemes } from '../../theme/chatTheme';
 import { buildSeedMessages, drAhmadContact, makeId, nextReply } from './mockChatData';
@@ -74,6 +82,9 @@ export default function PremiumChatScreen({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showJump, setShowJump] = useState(false);
+  const [attachmentOpen, setAttachmentOpen] = useState(false);
+  const [pendingImage, setPendingImage] = useState(null);
+  const [viewingImage, setViewingImage] = useState(null);
   const replyCount = useRef(0);
   const statusTimers = useRef([]);
   const listRef = useRef(null);
@@ -135,6 +146,125 @@ export default function PremiumChatScreen({
     set(2400, 'read');
   };
 
+  const scheduleReply = () => {
+    const replyAt = replyCount.current;
+    replyCount.current += 1;
+    statusTimers.current.push(
+      setTimeout(() => {
+        appendMessages([
+          {
+            _id: makeId(),
+            type: 'text',
+            text: nextReply(replyAt),
+            sender: 'them',
+            createdAt: new Date().toISOString(),
+            status: 'read',
+          },
+        ]);
+      }, 3200),
+    );
+  };
+
+  const appendOutgoing = partial => {
+    const message = {
+      ...partial,
+      sender: 'me',
+      createdAt: new Date().toISOString(),
+      status: 'sent',
+    };
+    appendMessages([message]);
+    scheduleStatus(message._id);
+    return message;
+  };
+
+  const handlePickerResponse = response => {
+    const asset = response.assets?.[0];
+    if (asset?.uri) {
+      setPendingImage({ uri: asset.uri, fileName: asset.fileName });
+      return;
+    }
+    if (response.errorMessage) {
+      Alert.alert('Could not open picker', response.errorMessage);
+    }
+  };
+
+  const pickFromGallery = () => {
+    setAttachmentOpen(false);
+    launchImageLibrary(
+      { mediaType: 'photo', quality: 0.8, maxWidth: 1440, maxHeight: 1440, selectionLimit: 1 },
+      response => {
+        if (response.didCancel) return;
+        handlePickerResponse(response);
+      },
+    );
+  };
+
+  const takeWithCamera = () => {
+    setAttachmentOpen(false);
+    launchCamera(
+      { mediaType: 'photo', quality: 0.8, maxWidth: 1440, maxHeight: 1440, saveToPhotos: false },
+      response => {
+        if (response.didCancel) return;
+        if (!response.assets?.[0]?.uri) {
+          Alert.alert(
+            'Camera unavailable',
+            response.errorMessage ||
+              'The camera could not be opened on this device. Try the gallery instead.',
+          );
+          return;
+        }
+        handlePickerResponse(response);
+      },
+    );
+  };
+
+  const pickDocument = async () => {
+    setAttachmentOpen(false);
+    try {
+      const [file] = await pick({ type: [types.pdf, types.allFiles] });
+      if (!file?.uri) return;
+      appendOutgoing({
+        _id: makeId(),
+        type: 'document',
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+      });
+      scheduleReply();
+    } catch (error) {
+      // The document picker throws when the user cancels; ignore that case.
+      if (!String(error?.message || '').toLowerCase().includes('cancel')) {
+        Alert.alert('Could not pick document', error?.message || String(error));
+      }
+    }
+  };
+
+  const sendImage = caption => {
+    const uri = pendingImage?.uri;
+    if (!uri) return;
+    setPendingImage(null);
+    appendOutgoing({ _id: makeId(), type: 'image', imageUrl: uri, caption });
+    scheduleReply();
+  };
+
+  const renderAttachment = message => {
+    if (message.type === 'image') {
+      return (
+        <ImageMessage
+          message={message}
+          theme={theme}
+          onPress={() => setViewingImage(message)}
+        />
+      );
+    }
+    if (message.type === 'document' || message.type === 'pdf') {
+      return (
+        <DocumentBubble message={message} theme={theme} mine={message.sender === 'me'} />
+      );
+    }
+    return null;
+  };
+
   const sendText = () => {
     const value = text.trim();
     if (!value) return;
@@ -152,22 +282,7 @@ export default function PremiumChatScreen({
       },
     ]);
     scheduleStatus(outgoingId);
-    const replyAt = replyCount.current;
-    replyCount.current += 1;
-    statusTimers.current.push(
-      setTimeout(() => {
-        appendMessages([
-          {
-            _id: makeId(),
-            type: 'text',
-            text: nextReply(replyAt),
-            sender: 'them',
-            createdAt: new Date().toISOString(),
-            status: 'read',
-          },
-        ]);
-      }, 3200),
-    );
+    scheduleReply();
   };
 
   const renderItem = ({ item }) => {
@@ -187,6 +302,7 @@ export default function PremiumChatScreen({
         message={item.message}
         theme={theme}
         mine={item.message.sender === 'me'}
+        renderAttachment={renderAttachment}
       />
     );
   };
@@ -282,10 +398,13 @@ export default function PremiumChatScreen({
           <ComposerButton onPress={() => setEmojiOpen(open => !open)} theme={theme}>
             <Text style={{ fontSize: 19 }}>{emojiOpen ? '✕' : '😊'}</Text>
           </ComposerButton>
-          <ComposerButton onPress={() => {}} theme={theme} accessibilityLabel="Attach a file">
+          <ComposerButton
+            onPress={() => setAttachmentOpen(true)}
+            theme={theme}
+            accessibilityLabel="Attach a file">
             <PaperclipIcon color={theme.muted} size={19} />
           </ComposerButton>
-          <ComposerButton onPress={() => {}} theme={theme} accessibilityLabel="Take a photo">
+          <ComposerButton onPress={takeWithCamera} theme={theme} accessibilityLabel="Take a photo">
             <CameraIcon color={theme.muted} size={19} />
           </ComposerButton>
           <TextInput
@@ -317,6 +436,28 @@ export default function PremiumChatScreen({
             </ComposerButton>
           )}
         </View>
+
+        <AttachmentSheet
+          visible={attachmentOpen}
+          theme={theme}
+          onClose={() => setAttachmentOpen(false)}
+          onGallery={pickFromGallery}
+          onCamera={takeWithCamera}
+          onDocument={pickDocument}
+        />
+        <ImagePreviewModal
+          visible={!!pendingImage}
+          image={pendingImage}
+          theme={theme}
+          onCancel={() => setPendingImage(null)}
+          onSend={sendImage}
+        />
+        <ImageViewerModal
+          visible={!!viewingImage}
+          image={viewingImage}
+          theme={theme}
+          onClose={() => setViewingImage(null)}
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -457,5 +598,3 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 });
-
-export { formatClock };

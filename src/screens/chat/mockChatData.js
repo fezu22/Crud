@@ -1,6 +1,8 @@
 // Demo conversation used by the premium chat experience. The Medi backend
 // currently supports text chat only, so media, document and voice messages
 // are local demo data until a real API exists for them.
+import demoImage from '../../assets/cloudinary-guide.png';
+
 export const drAhmadContact = {
   id: 'demo-dr-ahmad',
   name: 'Dr. Ahmad',
@@ -37,6 +39,25 @@ export function buildSeedMessages() {
       text: 'That is great to hear. Keep taking the medication after breakfast and stay hydrated.',
       sender: 'them',
       createdAt: minutesAgo(180),
+      status: 'read',
+    },
+    {
+      _id: 'seed-4',
+      type: 'image',
+      imageUrl: demoImage,
+      caption: 'Here is the diet plan we discussed.',
+      sender: 'them',
+      createdAt: minutesAgo(176),
+      status: 'read',
+    },
+    {
+      _id: 'seed-5',
+      type: 'document',
+      fileName: 'Blood_Test_Results.pdf',
+      fileType: 'application/pdf',
+      fileSize: 384512,
+      sender: 'me',
+      createdAt: minutesAgo(172),
       status: 'read',
     },
   ];
