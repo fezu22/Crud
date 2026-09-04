@@ -1,13 +1,15 @@
 require('dotenv').config({
-  path: require('path').join(
-    __dirname,
-    '.env',
-  ),
+  path: require('path').join(__dirname, '.env'),
 });
 
 const express = require('express');
+const http = require('http');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const { Server } = require('socket.io');
+
+const User = require('./models/User');
 
 const taskRoutes = require('./routes/taskRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -20,6 +22,14 @@ const {
 } = require('./utils/admin');
 
 const app = express();
+const httpServer = http.createServer(app);
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
 
 app.use(cors());
 app.use(express.json());
@@ -32,70 +42,125 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get(
-  '/api/health',
-  (req, res) => {
-    const dbState =
-      mongoose.connection.readyState;
+app.get('/api/health', (req, res) => {
+  const dbState = mongoose.connection.readyState;
 
-    const dbStatus =
-      dbState === 1
-        ? 'Connected'
-        : dbState === 2
-          ? 'Connecting'
-          : 'Disconnected';
+  const dbStatus =
+    dbState === 1
+      ? 'Connected'
+      : dbState === 2
+        ? 'Connecting'
+        : 'Disconnected';
 
-    res.json({
-      status: 'ok',
-      database: dbStatus,
-      timestamp:
-        new Date().toISOString(),
+  res.json({
+    status: 'ok',
+    database: dbStatus,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/media', mediaRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/chat', chatRoutes);
+
+app.use((err, req, res, next) => {
+  console.error('Unhandled Server Error:', err);
+
+  res.status(500).json({
+    message: err.message || 'Internal Server Error',
+  });
+});
+
+/*
+  Socket.IO authentication
+*/
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+
+    const secret =
+      process.env.JWT_SECRET ||
+      'default_jwt_secret_key_change_in_production';
+
+    if (!token) {
+      return next(new Error('Authentication required'));
+    }
+
+    const decoded = jwt.verify(token, secret);
+
+    const user = await User.findById(decoded.id).select('-password');
+
+    if (!user) {
+      return next(new Error('User not found'));
+    }
+
+    socket.user = user;
+    next();
+  } catch (error) {
+    next(new Error('Invalid call authentication'));
+  }
+});
+
+/*
+  Real-time call signaling events
+*/
+io.on('connection', socket => {
+  const userId = String(socket.user._id);
+
+  socket.join(`user:${userId}`);
+
+  console.log(`Call socket connected: ${socket.user.email || userId}`);
+
+  const forwardToUser = (eventName, payload = {}) => {
+    const targetUserId = String(payload.targetUserId || '');
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      return;
+    }
+
+    io.to(`user:${targetUserId}`).emit(eventName, {
+      ...payload,
+      fromUserId: userId,
+      fromName: socket.user.name || socket.user.email || 'Medi user',
     });
-  },
-);
+  };
 
-app.use(
-  '/api/auth',
-  authRoutes,
-);
+  socket.on('call:invite', payload => {
+    forwardToUser('call:incoming', payload);
+  });
 
-app.use(
-  '/api/tasks',
-  taskRoutes,
-);
+  socket.on('call:accept', payload => {
+    forwardToUser('call:accepted', payload);
+  });
 
-app.use(
-  '/api/media',
-  mediaRoutes,
-);
+  socket.on('call:reject', payload => {
+    forwardToUser('call:rejected', payload);
+  });
 
-app.use(
-  '/api/projects',
-  projectRoutes,
-);
+  socket.on('call:hangup', payload => {
+    forwardToUser('call:hangup', payload);
+  });
 
-app.use(
-  '/api/chat',
-  chatRoutes,
-);
+  socket.on('webrtc:offer', payload => {
+    forwardToUser('webrtc:offer', payload);
+  });
 
-app.use(
-  (err, req, res, next) => {
-    console.error(
-      '❌ Unhandled Server Error:',
-      err,
-    );
+  socket.on('webrtc:answer', payload => {
+    forwardToUser('webrtc:answer', payload);
+  });
 
-    res.status(500).json({
-      message:
-        err.message ||
-        'Internal Server Error',
-    });
-  },
-);
+  socket.on('webrtc:ice-candidate', payload => {
+    forwardToUser('webrtc:ice-candidate', payload);
+  });
 
-const PORT =
-  process.env.PORT || 5000;
+  socket.on('disconnect', () => {
+    console.log(`Call socket disconnected: ${socket.user.email || userId}`);
+  });
+});
+
+const PORT = process.env.PORT || 5000;
 
 const MONGO_URI =
   process.env.MONGO_URI ||
@@ -103,31 +168,20 @@ const MONGO_URI =
 
 mongoose
   .connect(MONGO_URI)
-  .then(async function () {
+  .then(async () => {
     await ensureConfiguredAdminAtStartup();
 
-    console.log(
-      '✅ Connected to MongoDB at:',
-      MONGO_URI,
-    );
+    console.log('Connected to MongoDB at:', MONGO_URI);
 
-    app.listen(
-      PORT,
-      '0.0.0.0',
-      function () {
-        console.log(
-          '🚀 Server running on port ' +
-          PORT +
-          ' (http://localhost:' +
-          PORT +
-          ')',
-        );
-      },
-    );
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(
+        `Server running on port ${PORT} (http://localhost:${PORT})`,
+      );
+    });
   })
-  .catch(function (err) {
+  .catch(error => {
     console.error(
-      '❌ MongoDB Connection Error:',
-      err.message,
+      'MongoDB Connection Error:',
+      error.message,
     );
   });
