@@ -293,8 +293,23 @@ router.get(
 router.post(
   '/:userId',
   async (req, res) => {
+    const body = req.body || {};
+
+    const type = [
+      'text',
+      'image',
+      'document',
+      'voice',
+    ].includes(body.type)
+      ? body.type
+      : 'text';
+
     const text = String(
-      req.body.text || '',
+      body.text || '',
+    ).trim();
+
+    const attachmentUrl = String(
+      body.attachmentUrl || '',
     ).trim();
 
     const other =
@@ -303,35 +318,59 @@ router.post(
       ).select('_id');
 
     if (!other) {
-      return res
-        .status(404)
-        .json({
-          message:
-            'User not found',
-        });
+      return res.status(404).json({
+        message: 'User not found',
+      });
     }
 
-    if (!text) {
-      return res
-        .status(400)
-        .json({
-          message:
-            'Message cannot be empty',
-        });
+    if (type === 'text' && !text) {
+      return res.status(400).json({
+        message: 'Message cannot be empty',
+      });
+    }
+
+    if (
+      type !== 'text' &&
+      !attachmentUrl
+    ) {
+      return res.status(400).json({
+        message: 'Attachment URL is required',
+      });
     }
 
     const message =
       await ChatMessage.create({
-        sender:
-          req.user._id,
-        recipient:
-          other._id,
+        sender: req.user._id,
+        recipient: other._id,
+        type,
         text,
+        attachmentUrl,
+        fileName: String(
+          body.fileName || '',
+        ),
+        fileType: String(
+          body.fileType || '',
+        ),
+        fileSize: Number(
+          body.fileSize || 0,
+        ),
+        duration: Number(
+          body.duration || 0,
+        ),
+        caption: String(
+          body.caption || '',
+        ),
+        waveform: Array.isArray(
+          body.waveform,
+        )
+          ? body.waveform
+              .slice(0, 120)
+              .map(Number)
+              .filter(Number.isFinite)
+          : [],
       });
 
-    res
-      .status(201)
-      .json(message);
+    return res.status(201).json(message);
   },
 );
 
