@@ -127,9 +127,7 @@ export async function loginUser(identifier, password) {
   return request('/auth/login', {
     method: 'POST',
     body: {
-      identifier,
-      email: identifier,
-      phone: identifier,
+      identifier: identifier.trim(),
       password,
     },
     fallbackMessage: 'Login failed',
@@ -153,6 +151,41 @@ export async function getCurrentUser(token) {
 
 // ================= CLOUDINARY CONNECTION =================
 
+export async function verifyCloudinaryConnection(cloudName, uploadPreset) {
+  if (!cloudName?.trim() || !uploadPreset?.trim()) {
+    throw new Error(
+      'Cloudinary Cloud Name and unsigned Upload Preset are required.',
+    );
+  }
+
+  const body = new FormData();
+
+  body.append(
+    'file',
+    'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+  );
+  body.append('upload_preset', uploadPreset.trim());
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudName.trim()}/image/upload`,
+    {
+      method: 'POST',
+      body,
+    },
+  );
+
+  const data = await response.json();
+
+  if (!response.ok || !data.secure_url) {
+    throw new Error(
+      data.error?.message ||
+        'Cloudinary details could not be verified. Check your Cloud Name and unsigned Upload Preset.',
+    );
+  }
+
+  return data;
+}
+
 export async function saveCloudinaryConnection(
   cloudName,
   uploadPreset,
@@ -163,6 +196,8 @@ export async function saveCloudinaryConnection(
       'Cloudinary Cloud Name and unsigned Upload Preset are required.',
     );
   }
+
+  await verifyCloudinaryConnection(cloudName, uploadPreset);
 
   return request('/auth/cloudinary-connection', {
     method: 'PUT',
@@ -279,12 +314,89 @@ export async function getChatMessages(userId, token) {
   return request(`/chat/${userId}`, { token });
 }
 
-export async function sendChatMessage(userId, text, token) {
+export async function sendChatMessage(userId, textOrPayload, token, extra = {}) {
+  const body =
+    typeof textOrPayload === 'object' && textOrPayload !== null
+      ? textOrPayload
+      : { ...extra, text: textOrPayload };
+
   return request(`/chat/${userId}`, {
     method: 'POST',
     token,
-    body: { text },
+    body,
   });
+}
+
+function isVideoFile(file) {
+  const type = file.type || '';
+  const name = file.fileName || '';
+
+  return (
+    type.startsWith('video/') ||
+    /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(name)
+  );
+}
+
+function isImageFile(file) {
+  const type = file.type || '';
+  const name = file.fileName || '';
+
+  return (
+    type.startsWith('image/') ||
+    /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(name)
+  );
+}
+
+export async function uploadChatAttachment(file, cloudStorage) {
+  if (
+    !cloudStorage?.cloudName?.trim() ||
+    !cloudStorage?.uploadPreset?.trim()
+  ) {
+    throw new Error(
+      'Connect your Cloudinary storage before sending media in chat.',
+    );
+  }
+
+  const fileType = file.type || '';
+  const resourceType = isVideoFile(file)
+    ? 'video'
+    : isImageFile(file)
+      ? 'image'
+      : 'raw';
+  const messageType = resourceType === 'raw' ? 'document' : resourceType;
+  const body = new FormData();
+
+  body.append('file', {
+    uri: file.uri,
+    type: fileType || 'application/octet-stream',
+    name: file.fileName || `chat_${Date.now()}`,
+  });
+
+  body.append('upload_preset', cloudStorage.uploadPreset.trim());
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudStorage.cloudName.trim()}/${resourceType}/upload`,
+    {
+      method: 'POST',
+      body,
+    },
+  );
+
+  const uploaded = await response.json();
+
+  if (!response.ok || !uploaded.secure_url) {
+    throw new Error(
+      uploaded.error?.message || 'Chat media upload failed',
+    );
+  }
+
+  return {
+    attachmentUrl: uploaded.secure_url,
+    fileName: file.fileName || uploaded.original_filename || '',
+    fileType,
+    fileSize: file.size || uploaded.bytes || 0,
+    type: messageType,
+  };
 }
 
 // ================= CLOUDINARY MEDIA API =================

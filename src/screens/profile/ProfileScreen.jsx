@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 
+const addProfileImageIcon = require('../../assets/add-profile-image.png');
+
 const Stat = ({ value, label }) => (
   <View className="flex-1 items-center">
     <Text className="text-2xl font-extrabold text-ink dark:text-white">
@@ -46,6 +48,9 @@ export default function ProfileScreen({
 }) {
   const dark = theme === 'dark';
   const [choosingImage, setChoosingImage] = useState(false);
+  const displayName = user?.name || user?.email || user?.phoneNumber || 'Your account';
+  const avatarInitial = displayName[0]?.toUpperCase() || 'U';
+  const cloudConnected = Boolean(user?.cloudName && user?.uploadPreset);
 
   async function chooseProfileImage() {
     if (choosingImage) return;
@@ -92,19 +97,27 @@ export default function ProfileScreen({
           ) : (
             <View className="h-24 w-24 items-center justify-center rounded-[32px] bg-[#eae5ff] dark:bg-[#2c2840]">
               <Text className="text-4xl font-extrabold text-brand">
-                {(user?.name || 'U')[0].toUpperCase()}
+                {avatarInitial}
               </Text>
             </View>
           )}
           <View className="absolute -bottom-2 -right-2 h-9 w-9 items-center justify-center rounded-full border-4 border-canvas bg-brand dark:border-[#12111a]">
-            {choosingImage ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-base text-white">✎</Text>}
+            {choosingImage ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Image
+                source={addProfileImageIcon}
+                className="h-5 w-5"
+                resizeMode="contain"
+              />
+            )}
           </View>
         </TouchableOpacity>
         <TouchableOpacity onPress={chooseProfileImage} disabled={choosingImage}>
           <Text className="mt-4 text-xs font-extrabold text-brand">Edit profile photo</Text>
         </TouchableOpacity>
         <Text className="mt-4 text-2xl font-extrabold text-ink dark:text-white">
-          {user?.name || 'Tidy User'}
+          {displayName}
         </Text>
         <Text className="mt-1 text-sm text-muted dark:text-[#aaa5b5]">
           {user?.email || user?.phoneNumber || 'Welcome back'}
@@ -119,10 +132,12 @@ export default function ProfileScreen({
         PREFERENCES
       </Text>
       <View className="overflow-hidden rounded-3xl border border-line dark:border-[#343140] dark:bg-[#1b1923]">
-        <TouchableOpacity onPress={onConnectCloud} className="h-[72px] flex-row items-center border-b border-line px-4 dark:border-[#343140]">
-          <View className="mr-3 h-10 w-10 items-center justify-center rounded-xl bg-[#f1eefc] dark:bg-[#2c2840]"><Text className="dark:text-white">☁</Text></View>
-          <View className="flex-1"><Text className="font-bold text-ink dark:text-white">Cloud storage</Text><Text className="mt-0.5 text-xs text-muted dark:text-[#aaa5b5]">{user?.cloudName && user?.uploadPreset ? 'Connected — edit details' : 'Connect before uploading'}</Text></View><Text className="text-2xl text-[#b0acb9]">›</Text>
-        </TouchableOpacity>
+        {!cloudConnected && (
+          <TouchableOpacity onPress={onConnectCloud} className="h-[72px] flex-row items-center border-b border-line px-4 dark:border-[#343140]">
+            <View className="mr-3 h-10 w-10 items-center justify-center rounded-xl bg-[#f1eefc] dark:bg-[#2c2840]"><Text className="dark:text-white">☁</Text></View>
+            <View className="flex-1"><Text className="font-bold text-ink dark:text-white">Cloud storage</Text><Text className="mt-0.5 text-xs text-muted dark:text-[#aaa5b5]">Connect before uploading</Text></View><Text className="text-2xl text-[#b0acb9]">›</Text>
+          </TouchableOpacity>
+        )}
         <Setting
           icon="♢"
           title="Notifications"

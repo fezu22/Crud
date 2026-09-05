@@ -284,6 +284,7 @@ export default function HomeScreen({
   onTask,
   onDeleteMedia,
   onAddTask,
+  profileImage,
   onProfile,
 }) {
   const stats = [
@@ -397,9 +398,17 @@ export default function HomeScreen({
           accessibilityRole="button"
           accessibilityLabel="Open profile"
         >
-          <Text className="text-lg font-extrabold text-white">
-            {(user?.name || user?.phoneNumber || 'U').charAt(0).toUpperCase()}
-          </Text>
+          {profileImage ? (
+            <Image
+              source={{ uri: profileImage }}
+              className="h-14 w-14 rounded-3xl"
+              resizeMode="cover"
+            />
+          ) : (
+            <Text className="text-lg font-extrabold text-white">
+              {(user?.name || user?.phoneNumber || 'U').charAt(0).toUpperCase()}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 

@@ -539,6 +539,25 @@ router.put(
         });
       }
 
+      if (req.user.cloudName || req.user.uploadPreset) {
+        const sameConnection =
+          req.user.cloudName === cloudName &&
+          req.user.uploadPreset === uploadPreset;
+
+        if (!sameConnection) {
+          return res.status(409).json({
+            message:
+              'Cloud storage is already permanently linked to this account.',
+          });
+        }
+
+        return res.json({
+          message:
+            'Cloudinary already connected',
+          user: formatUser(req.user),
+        });
+      }
+
       const owner = await User.findOne({ cloudName, _id: { $ne: req.user._id } }).select('_id');
       if (owner) return res.status(409).json({ message: 'This Cloudinary Cloud Name is already connected to another Medi user.' });
 
@@ -583,18 +602,9 @@ router.delete(
   auth,
   async (req, res) => {
     try {
-      req.user.cloudinaryConnected = false;
-      req.user.cloudinaryCloudName = '';
-      req.user.cloudName = '';
-      req.user.uploadPreset = '';
-      req.user.cloudinaryConnectedAt = null;
-
-      await req.user.save();
-
-      res.json({
+      res.status(403).json({
         message:
-          'Cloudinary disconnected successfully',
-        user: formatUser(req.user),
+          'Cloud storage is permanently linked to this account.',
       });
     } catch (err) {
       console.error(

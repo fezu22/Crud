@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Video from 'react-native-video';
 
 /**
  * Shown after picking a photo: preview with an optional caption before it
@@ -24,6 +25,7 @@ export default function ImagePreviewModal({ visible, image, theme, onCancel, onS
 
   if (!image) return null;
   const source = typeof image.uri === 'number' ? image.uri : { uri: image.uri };
+  const isVideo = image.type?.startsWith('video/');
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
@@ -32,8 +34,20 @@ export default function ImagePreviewModal({ visible, image, theme, onCancel, onS
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.backdrop}>
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.title, { color: theme.ink }]}>Send photo</Text>
-            <Image source={source} style={styles.preview} resizeMode="cover" />
+            <Text style={[styles.title, { color: theme.ink }]}>
+              {isVideo ? 'Send video' : 'Send photo'}
+            </Text>
+            {isVideo ? (
+              <Video
+                source={source}
+                style={styles.preview}
+                resizeMode="cover"
+                paused
+                controls
+              />
+            ) : (
+              <Image source={source} style={styles.preview} resizeMode="cover" />
+            )}
             <TextInput
               style={[
                 styles.captionInput,
@@ -43,7 +57,7 @@ export default function ImagePreviewModal({ visible, image, theme, onCancel, onS
                   color: theme.ink,
                 },
               ]}
-              placeholder="Add a caption…"
+              placeholder="Add a caption (optional)…"
               placeholderTextColor={theme.muted}
               value={caption}
               onChangeText={setCaption}

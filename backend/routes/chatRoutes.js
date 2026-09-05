@@ -24,6 +24,60 @@ const publicUser = u => ({
   online: isOnline(u.lastActiveAt),
 });
 
+const previewText = message => {
+  if (message.text) {
+    return message.text;
+  }
+
+  if (message.caption) {
+    return message.caption;
+  }
+
+  if (message.type === 'image') {
+    return '[Image]';
+  }
+
+  if (message.type === 'video') {
+    return '[Video]';
+  }
+
+  if (message.type === 'document') {
+    return message.fileName || '[Document]';
+  }
+
+  if (message.type === 'voice') {
+    return '[Voice message]';
+  }
+
+  return '';
+};
+
+const inferAttachmentType = body => {
+  const fileType = String(body.fileType || '').toLowerCase();
+  const fileName = String(body.fileName || '').toLowerCase();
+  const attachmentUrl = String(body.attachmentUrl || '').toLowerCase();
+
+  if (
+    fileType.startsWith('video/') ||
+    attachmentUrl.includes('/video/upload/') ||
+    /\.(mp4|mov|m4v|webm|mkv|avi)(\?|$)/i.test(fileName) ||
+    /\.(mp4|mov|m4v|webm|mkv|avi)(\?|$)/i.test(attachmentUrl)
+  ) {
+    return 'video';
+  }
+
+  if (
+    fileType.startsWith('image/') ||
+    attachmentUrl.includes('/image/upload/') ||
+    /\.(jpg|jpeg|png|gif|webp|heic|heif)(\?|$)/i.test(fileName) ||
+    /\.(jpg|jpeg|png|gif|webp|heic|heif)(\?|$)/i.test(attachmentUrl)
+  ) {
+    return 'image';
+  }
+
+  return 'document';
+};
+
 router.get('/users', async (req, res) => {
   const q = String(
     req.query.q || '',
@@ -140,7 +194,7 @@ router.get(
             user: publicUser(u),
 
             lastMessage:
-              ms[0].text,
+              previewText(ms[0]),
 
             lastMessageAt:
               ms[0].createdAt,
@@ -295,9 +349,10 @@ router.post(
   async (req, res) => {
     const body = req.body || {};
 
-    const type = [
+    let type = [
       'text',
       'image',
+      'video',
       'document',
       'voice',
     ].includes(body.type)
@@ -311,6 +366,10 @@ router.post(
     const attachmentUrl = String(
       body.attachmentUrl || '',
     ).trim();
+
+    if (type === 'text' && attachmentUrl) {
+      type = inferAttachmentType(body);
+    }
 
     const other =
       await User.findById(
@@ -330,7 +389,7 @@ router.post(
     }
 
     if (
-      type !== 'text' &&
+      ['image', 'video', 'document'].includes(type) &&
       !attachmentUrl
     ) {
       return res.status(400).json({

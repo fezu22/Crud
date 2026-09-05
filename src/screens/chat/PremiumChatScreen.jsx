@@ -37,6 +37,7 @@ import {
 import {
   getChatMessages,
   sendChatMessage,
+  uploadChatAttachment,
 } from '../../services/api';
 
 import {
@@ -140,6 +141,16 @@ function idOf(value) {
   return value;
 }
 
+function isVideoAttachment(attachment) {
+  const type = attachment?.type || '';
+  const name = attachment?.fileName || '';
+
+  return (
+    type.startsWith('video/') ||
+    /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(name)
+  );
+}
+
 function normalizeServerMessage(message, userId) {
   const isMine =
     String(idOf(message.sender)) === String(userId);
@@ -147,8 +158,16 @@ function normalizeServerMessage(message, userId) {
   return {
     ...message,
     _id: message._id || makeId(),
-    type: 'text',
+    type: message.type || 'text',
     sender: isMine ? 'me' : 'them',
+    imageUrl:
+      message.imageUrl ||
+      message.attachmentUrl ||
+      '',
+    attachmentUrl:
+      message.attachmentUrl ||
+      message.imageUrl ||
+      '',
     createdAt:
       message.createdAt ||
       new Date().toISOString(),
@@ -256,14 +275,31 @@ export default function PremiumChatScreen({
           ? data.messages
           : [];
 
-        setMessages(
-          serverMessages.map(message =>
+        const normalizedMessages = serverMessages.map(
+          message =>
             normalizeServerMessage(
               message,
               currentUserId,
             ),
-          ),
         );
+
+        setMessages(current => {
+          const serverIds = new Set(
+            normalizedMessages.map(message => message._id),
+          );
+          const pendingLocal = current.filter(
+            message =>
+              message.sender === 'me' &&
+              !serverIds.has(message._id) &&
+              String(message._id).startsWith('local-'),
+          );
+
+          return [...normalizedMessages, ...pendingLocal].sort(
+            (a, b) =>
+              new Date(a.createdAt) -
+              new Date(b.createdAt),
+          );
+        });
       } catch (error) {
         onErrorRef.current?.(error);
       }
@@ -451,6 +487,20 @@ export default function PremiumChatScreen({
     return message;
   };
 
+  const replaceMessage = (messageId, nextMessage) => {
+    setMessages(current =>
+      current.map(item =>
+        item._id === messageId ? nextMessage : item,
+      ),
+    );
+  };
+
+  const removeMessage = messageId => {
+    setMessages(current =>
+      current.filter(item => item._id !== messageId),
+    );
+  };
+
   const sendText = async () => {
     const value = text.trim();
 
@@ -498,6 +548,8 @@ export default function PremiumChatScreen({
       setPendingImage({
         uri: asset.uri,
         fileName: asset.fileName,
+        type: asset.type,
+        size: asset.fileSize,
       });
 
       return;
@@ -516,7 +568,7 @@ export default function PremiumChatScreen({
 
     launchImageLibrary(
       {
-        mediaType: 'photo',
+        mediaType: 'mixed',
         quality: 0.8,
         maxWidth: 1440,
         maxHeight: 1440,
@@ -575,15 +627,56 @@ export default function PremiumChatScreen({
         return;
       }
 
-      appendOutgoing({
+      const documentMessage = appendOutgoing({
         _id: makeId(),
         type: 'document',
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
+        attachmentUrl: file.uri,
       });
 
-      scheduleReply();
+      if (!syncWithServer) {
+        scheduleReply();
+        return;
+      }
+
+      try {
+        const uploaded = await uploadChatAttachment(
+          {
+            uri: file.uri,
+            type: file.type,
+            fileName: file.name,
+            size: file.size,
+          },
+          {
+            cloudName: user?.cloudName,
+            uploadPreset: user?.uploadPreset,
+          },
+        );
+
+        const saved = await sendChatMessage(
+          contactId,
+          {
+            ...uploaded,
+            text: '',
+            type: 'document',
+            attachmentUrl: uploaded.attachmentUrl,
+          },
+          token,
+        );
+
+        replaceMessage(
+          documentMessage._id,
+          normalizeServerMessage(
+            saved,
+            currentUserId,
+          ),
+        );
+      } catch (error) {
+        removeMessage(documentMessage._id);
+        onErrorRef.current?.(error);
+      }
     } catch (error) {
       const message = String(
         error?.message || '',
@@ -598,23 +691,69 @@ export default function PremiumChatScreen({
     }
   };
 
-  const sendImage = caption => {
-    const uri = pendingImage?.uri;
+  const sendImage = async caption => {
+    const attachment = pendingImage;
+    const uri = attachment?.uri;
+    const trimmedCaption = String(caption || '').trim();
 
     if (!uri) {
       return;
     }
 
     setPendingImage(null);
+    const messageType = isVideoAttachment(attachment)
+      ? 'video'
+      : 'image';
 
-    appendOutgoing({
+    const optimisticMessage = appendOutgoing({
       _id: makeId(),
-      type: 'image',
+      type: messageType,
       imageUrl: uri,
-      caption,
+      attachmentUrl: uri,
+      caption: trimmedCaption,
+      fileName: attachment.fileName,
+      fileType: attachment.type,
+      fileSize: attachment.size,
     });
 
-    scheduleReply();
+    if (!syncWithServer) {
+      scheduleReply();
+      return;
+    }
+
+    try {
+      const uploaded = await uploadChatAttachment(
+        attachment,
+        {
+          cloudName: user?.cloudName,
+          uploadPreset: user?.uploadPreset,
+        },
+      );
+
+      const saved = await sendChatMessage(
+        contactId,
+        {
+          ...uploaded,
+          text: '',
+          type: messageType,
+          caption: trimmedCaption,
+          attachmentUrl: uploaded.attachmentUrl,
+        },
+        token,
+      );
+
+      replaceMessage(
+        optimisticMessage._id,
+        normalizeServerMessage(
+          saved,
+          currentUserId,
+        ),
+      );
+    } catch (error) {
+      removeMessage(optimisticMessage._id);
+      setPendingImage(attachment);
+      onErrorRef.current?.(error);
+    }
   };
 
   const startVoiceRecording = async () => {
@@ -660,7 +799,7 @@ export default function PremiumChatScreen({
   const sendVoiceMessage = secondsRecorded => {
     setRecordingOpen(false);
 
-    appendOutgoing({
+    const voiceMessage = appendOutgoing({
       _id: makeId(),
       type: 'voice',
       duration: secondsRecorded,
@@ -669,11 +808,41 @@ export default function PremiumChatScreen({
       ),
     });
 
-    scheduleReply();
+    if (!syncWithServer) {
+      scheduleReply();
+      return;
+    }
+
+    sendChatMessage(
+      contactId,
+      {
+        text: '',
+        type: 'voice',
+        duration: secondsRecorded,
+        waveform: voiceMessage.waveform,
+      },
+      token,
+    )
+      .then(saved => {
+        replaceMessage(
+          voiceMessage._id,
+          normalizeServerMessage(
+            saved,
+            currentUserId,
+          ),
+        );
+      })
+      .catch(error => {
+        removeMessage(voiceMessage._id);
+        onErrorRef.current?.(error);
+      });
   };
 
   const renderAttachment = message => {
-    if (message.type === 'image') {
+    if (
+      message.type === 'image' ||
+      message.type === 'video'
+    ) {
       return (
         <ImageMessage
           message={message}

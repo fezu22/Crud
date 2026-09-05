@@ -113,6 +113,7 @@ export default function App() {
   });
   const profileUserId = getUserStorageId(user);
   const successTimeoutRef = useRef(null);
+  const authGenerationRef = useRef(0);
   const {
     tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
     formProject, savingTask, resetTasks, openTaskForm, closeTaskForm, saveTask,
@@ -185,14 +186,23 @@ export default function App() {
   }, [preferences.notifications, preferences.ready, tasks, token]);
 
   async function restoreSession() {
+    const restoreGeneration = authGenerationRef.current;
+
     try {
       const session = await loadSession();
-      if (session.token) {
-        setToken(session.token);
-        const fresh = await getCurrentUser(session.token);
-        setUser(fresh.user);
-        await saveSession(session.token, fresh.user);
+      if (!session.token || authGenerationRef.current !== restoreGeneration) {
+        return;
       }
+
+      const fresh = await getCurrentUser(session.token);
+
+      if (authGenerationRef.current !== restoreGeneration) {
+        return;
+      }
+
+      setToken(session.token);
+      setUser(fresh.user);
+      await saveSession(session.token, fresh.user);
     } catch (error) {
       console.warn('Failed to load session:', error);
     }
@@ -230,19 +240,19 @@ export default function App() {
     }
   }
 
-  async function loadWorkspace(authToken = token) {
+  async function loadWorkspace(authToken = token, workspaceUser = user) {
     if (!authToken) return;
     setLoading(true);
     try {
       const [taskData, mediaData, projectData] = await Promise.all([
         getTasks(authToken).catch(() => []),
-        user?.cloudName
-          ? getMyMedia(authToken, user.cloudName).catch(() => [])
+        workspaceUser?.cloudName
+          ? getMyMedia(authToken, workspaceUser.cloudName).catch(() => [])
           : Promise.resolve([]),
         getProjects(authToken).catch(() => []),
       ]);
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      const hasCloud = Boolean(user?.cloudName && user?.uploadPreset);
+      const hasCloud = Boolean(workspaceUser?.cloudName && workspaceUser?.uploadPreset);
       setTasks((taskData || []).map(task => hasCloud ? task : { ...task, imageUrl: '', imageUrls: [] }));
       setMedia(mediaData || []);
       setProjects(projectData || []);
@@ -260,8 +270,12 @@ export default function App() {
   async function login(credentials) {
     Keyboard.dismiss();
     setAuthLoading(true);
+    const authGeneration = authGenerationRef.current + 1;
+    authGenerationRef.current = authGeneration;
+
     try {
       const data = await loginUser(credentials.identifier, credentials.password);
+      if (authGenerationRef.current !== authGeneration) return;
       if (data.user?.encryptionSalt) deriveSessionKey(credentials.password, data.user.encryptionSalt);
       setToken(data.token);
       setUser(data.user);
@@ -274,8 +288,11 @@ export default function App() {
     }
   }
   async function register(form) {
+    const authGeneration = authGenerationRef.current + 1;
+    authGenerationRef.current = authGeneration;
     const identifier = form.email || form.phone;
     const data = await registerUser(form.name, identifier, form.password);
+    if (authGenerationRef.current !== authGeneration) return;
     if (data.user?.encryptionSalt) deriveSessionKey(form.password, data.user.encryptionSalt);
     setToken(data.token);
     setUser(data.user);
@@ -288,6 +305,7 @@ export default function App() {
       confirmText: 'Sign Out',
       isDestructive: true,
       onConfirm: async () => {
+        authGenerationRef.current += 1;
         setToken(null);
         setUser(null);
         clearSessionKey();
@@ -353,7 +371,7 @@ export default function App() {
       const data = await saveCloudinaryConnection(cloudName, uploadPreset, token);
       setUser(data.user);
       await saveSession(token, data.user);
-      await loadWorkspace(token);
+      await loadWorkspace(token, data.user);
       setConnectCloudOpen(false);
       showSuccess('Cloud storage connected!');
     } finally { setSavingCloud(false); }
@@ -435,6 +453,7 @@ export default function App() {
               filter={filter} onFilter={setFilter} onRefresh={refresh}
               onTask={openTaskDetail} onDeleteMedia={removeMedia}
               onAddTask={() => openTaskForm()}
+              profileImage={profileImage}
               onProfile={() => setActiveTab('profile')}
             />
           ) : activeTab === 'chat' ? (

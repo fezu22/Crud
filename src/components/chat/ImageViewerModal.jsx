@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Video from 'react-native-video';
 
 /**
  * Full-screen viewer for chat images. Tapping the backdrop or the close
@@ -7,8 +8,12 @@ import { Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-na
  */
 export default function ImageViewerModal({ visible, image, theme, onClose }) {
   if (!image) return null;
+  const uri = image.imageUrl || image.attachmentUrl;
   const source =
-    typeof image.imageUrl === 'number' ? image.imageUrl : { uri: image.imageUrl };
+    typeof uri === 'number' ? uri : { uri };
+  const isVideo =
+    image.type === 'video' ||
+    image.fileType?.startsWith('video/');
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -21,7 +26,16 @@ export default function ImageViewerModal({ visible, image, theme, onClose }) {
             <Text style={{ color: theme.ink, fontSize: 16, fontWeight: '800' }}>✕</Text>
           </TouchableOpacity>
         </View>
-        <Image source={source} style={styles.image} resizeMode="contain" />
+        {isVideo ? (
+          <Video
+            source={source}
+            style={styles.image}
+            resizeMode="contain"
+            controls
+          />
+        ) : (
+          <Image source={source} style={styles.image} resizeMode="contain" />
+        )}
         {image.caption ? (
           <View style={styles.captionRow}>
             <Text style={styles.caption}>{image.caption}</Text>

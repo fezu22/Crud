@@ -26,7 +26,7 @@ export default function CenteredModal({
     >
       <KeyboardAvoidingView
         className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable
           className="flex-1 items-center justify-center bg-black/60 px-4 py-8"
