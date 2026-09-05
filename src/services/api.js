@@ -2,16 +2,40 @@ import { API_BASE_URL } from '../config/apiConfig';
 import { encryptFile } from './privateCrypto';
 import RNFS from 'react-native-fs';
 
-export async function apiFetch(url, options) {
-  try {
-    return await fetch(url, options);
-  } catch (error) {
-    const networkError = new Error(
-      `Cannot connect to the backend at ${API_BASE_URL}. Check that the server is running and Android port 5000 is reversed.`,
-    );
-    networkError.cause = error;
-    throw networkError;
+// ================= NETWORK =================
+
+export async function apiFetch(url, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const attempts = method === 'GET' ? 2 : 1;
+  let lastError;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      if (options.signal?.aborted || error?.name === 'AbortError') {
+        throw error;
+      }
+
+      lastError = error;
+
+      // Retry reads only. Never automatically repeat a write request.
+      if (attempt + 1 < attempts) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
   }
+
+  const isProduction = API_BASE_URL.startsWith('https://');
+
+  const message = isProduction
+    ? 'Cannot connect to the server. Check your internet connection and try again shortly.'
+    : 'Cannot connect to the local backend. Start the backend and run adb reverse tcp:5000 tcp:5000.';
+
+  const networkError = new Error(message);
+  networkError.name = 'NetworkError';
+  networkError.cause = lastError;
+  throw networkError;
 }
 
 const getHeaders = token => {
@@ -26,37 +50,51 @@ const getHeaders = token => {
   return headers;
 };
 
-async function request(
-  path,
-  { method = 'GET', token, body, headers: extraHeaders } = {},
-) {
-  const response = await apiFetch(
-    `${API_BASE_URL}${path}`,
-    {
-      method,
-      headers: { ...getHeaders(token), ...(extraHeaders || {}) },
-      body:
-        body === undefined
-          ? undefined
-          : JSON.stringify(body),
-    },
-  );
-
+async function readResponse(response, fallbackMessage) {
   const raw = await response.text();
   let data;
+
   try {
     data = raw ? JSON.parse(raw) : {};
-  } catch (parseError) {
-    throw new Error(`Backend returned an invalid response (${response.status}). Make sure the Medi backend is running at ${API_BASE_URL}.`);
+  } catch {
+    const error = new Error(
+      `Server returned an invalid response (${response.status}). Please try again shortly.`,
+    );
+    error.status = response.status;
+    throw error;
   }
 
   if (!response.ok) {
-    throw new Error(
-      data.message || 'Request failed',
+    const error = new Error(
+      data?.message || fallbackMessage || 'Request failed',
     );
+    error.status = response.status;
+    throw error;
   }
 
   return data;
+}
+
+async function request(
+  path,
+  {
+    method = 'GET',
+    token,
+    body,
+    headers: extraHeaders,
+    fallbackMessage,
+  } = {},
+) {
+  const response = await apiFetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      ...getHeaders(token),
+      ...(extraHeaders || {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  return readResponse(response, fallbackMessage);
 }
 
 // ================= AUTH API =================
@@ -67,117 +105,53 @@ export async function registerUser(
   password,
   extraPhone,
 ) {
-  const url = `${API_BASE_URL}/auth/register`;
-
   const isEmail =
     typeof emailOrPhone === 'string' &&
     emailOrPhone.includes('@');
 
-  const payload = {
-    name,
-    password,
-    email: isEmail
-      ? emailOrPhone
-      : undefined,
-    phone: !isEmail
-      ? emailOrPhone || extraPhone
-      : extraPhone,
-  };
-
-  const response = await apiFetch(url, {
+  return request('/auth/register', {
     method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(payload),
+    body: {
+      name,
+      password,
+      email: isEmail ? emailOrPhone : undefined,
+      phone: !isEmail
+        ? emailOrPhone || extraPhone
+        : extraPhone,
+    },
+    fallbackMessage: 'Registration failed',
   });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message || 'Registration failed',
-    );
-  }
-
-  return data;
 }
 
-export async function loginUser(
-  identifier,
-  password,
-) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/auth/login`,
-    {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({
-        identifier,
-        email: identifier,
-        phone: identifier,
-        password,
-      }),
+export async function loginUser(identifier, password) {
+  return request('/auth/login', {
+    method: 'POST',
+    body: {
+      identifier,
+      email: identifier,
+      phone: identifier,
+      password,
     },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message || 'Login failed',
-    );
-  }
-
-  return data;
+    fallbackMessage: 'Login failed',
+  });
 }
 
-export async function loginWithTruecaller(
-  truecallerPayload,
-) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/auth/truecaller-login`,
-    {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(
-        truecallerPayload,
-      ),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Truecaller authentication failed',
-    );
-  }
-
-  return data;
+export async function loginWithTruecaller(truecallerPayload) {
+  return request('/auth/truecaller-login', {
+    method: 'POST',
+    body: truecallerPayload,
+    fallbackMessage: 'Truecaller authentication failed',
+  });
 }
 
 export async function getCurrentUser(token) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/auth/me`,
-    {
-      method: 'GET',
-      headers: getHeaders(token),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to fetch user profile',
-    );
-  }
-
-  return data;
+  return request('/auth/me', {
+    token,
+    fallbackMessage: 'Failed to fetch user profile',
+  });
 }
 
-// ================= CLOUDINARY ACCOUNT CONNECTION =================
+// ================= CLOUDINARY CONNECTION =================
 
 export async function saveCloudinaryConnection(
   cloudName,
@@ -186,163 +160,71 @@ export async function saveCloudinaryConnection(
 ) {
   if (!cloudName?.trim() || !uploadPreset?.trim()) {
     throw new Error(
-      'Cloudinary Cloud Name is required',
+      'Cloudinary Cloud Name and unsigned Upload Preset are required.',
     );
   }
 
-  const response = await apiFetch(
-    `${API_BASE_URL}/auth/cloudinary-connection`,
-    {
-      method: 'PUT',
-      headers: getHeaders(token),
-      body: JSON.stringify({
-        cloudName: cloudName.trim(),
-        uploadPreset: uploadPreset.trim(),
-      }),
+  return request('/auth/cloudinary-connection', {
+    method: 'PUT',
+    token,
+    body: {
+      cloudName: cloudName.trim(),
+      uploadPreset: uploadPreset.trim(),
     },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Could not save Cloudinary connection',
-    );
-  }
-
-  return data;
+    fallbackMessage: 'Could not save Cloudinary connection',
+  });
 }
 
-export async function removeCloudinaryConnection(
-  token,
-) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/auth/cloudinary-connection`,
-    {
-      method: 'DELETE',
-      headers: getHeaders(token),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Could not disconnect Cloudinary',
-    );
-  }
-
-  return data;
+export async function removeCloudinaryConnection(token) {
+  return request('/auth/cloudinary-connection', {
+    method: 'DELETE',
+    token,
+    fallbackMessage: 'Could not disconnect Cloudinary',
+  });
 }
 
 // ================= TASK API =================
 
 export async function getTasks(token) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/tasks`,
-    {
-      headers: getHeaders(token),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to fetch tasks',
-    );
-  }
-
-  return data;
+  return request('/tasks', {
+    token,
+    fallbackMessage: 'Failed to fetch tasks',
+  });
 }
 
-export async function createTask(
-  taskData,
-  token,
-) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/tasks`,
-    {
-      method: 'POST',
-      headers: getHeaders(token),
-      body: JSON.stringify(taskData),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to create task',
-    );
-  }
-
-  return data;
+export async function createTask(taskData, token) {
+  return request('/tasks', {
+    method: 'POST',
+    token,
+    body: taskData,
+    fallbackMessage: 'Failed to create task',
+  });
 }
 
-export async function updateTask(
-  id,
-  taskData,
-  token,
-) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/tasks/${id}`,
-    {
-      method: 'PUT',
-      headers: getHeaders(token),
-      body: JSON.stringify(taskData),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to update task',
-    );
-  }
-
-  return data;
+export async function updateTask(id, taskData, token) {
+  return request(`/tasks/${id}`, {
+    method: 'PUT',
+    token,
+    body: taskData,
+    fallbackMessage: 'Failed to update task',
+  });
 }
 
 export async function deleteTask(id, token) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/tasks/${id}`,
-    {
-      method: 'DELETE',
-      headers: getHeaders(token),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to delete task',
-    );
-  }
-
-  return data;
+  return request(`/tasks/${id}`, {
+    method: 'DELETE',
+    token,
+    fallbackMessage: 'Failed to delete task',
+  });
 }
 
 // ================= PROJECT API =================
 
 export async function getProjects(token) {
-  return request('/projects', {
-    token,
-  });
+  return request('/projects', { token });
 }
 
-export async function createProject(
-  projectData,
-  token,
-) {
+export async function createProject(projectData, token) {
   return request('/projects', {
     method: 'POST',
     token,
@@ -350,11 +232,7 @@ export async function createProject(
   });
 }
 
-export async function updateProject(
-  id,
-  projectData,
-  token,
-) {
+export async function updateProject(id, projectData, token) {
   return request(`/projects/${id}`, {
     method: 'PUT',
     token,
@@ -362,10 +240,7 @@ export async function updateProject(
   });
 }
 
-export async function deleteProject(
-  id,
-  token,
-) {
+export async function deleteProject(id, token) {
   return request(`/projects/${id}`, {
     method: 'DELETE',
     token,
@@ -373,43 +248,146 @@ export async function deleteProject(
 }
 
 // ================= CHAT API =================
-export async function getChatUsers(token, query = '') { return request(`/chat/users?q=${encodeURIComponent(query)}`, { token }); }
-export async function getAdminChat(token) { return request('/chat/admin', { token }); }
-export async function getConversations(token) { return request('/chat/conversations', { token }); }
-export async function getAllUsers(token, query = '') { return request(`/chat/all-users?q=${encodeURIComponent(query)}`, { token }); }
-export async function pingActive(token) { return request('/auth/ping', { token }); }
-export async function getChatMessages(userId, token) { return request(`/chat/${userId}`, { token }); }
-export async function sendChatMessage(userId, text, token) { return request(`/chat/${userId}`, { method: 'POST', token, body: { text } }); }
+
+export async function getChatUsers(token, query = '') {
+  return request(
+    `/chat/users?q=${encodeURIComponent(query)}`,
+    { token },
+  );
+}
+
+export async function getAdminChat(token) {
+  return request('/chat/admin', { token });
+}
+
+export async function getConversations(token) {
+  return request('/chat/conversations', { token });
+}
+
+export async function getAllUsers(token, query = '') {
+  return request(
+    `/chat/all-users?q=${encodeURIComponent(query)}`,
+    { token },
+  );
+}
+
+export async function pingActive(token) {
+  return request('/auth/ping', { token });
+}
+
+export async function getChatMessages(userId, token) {
+  return request(`/chat/${userId}`, { token });
+}
+
+export async function sendChatMessage(userId, text, token) {
+  return request(`/chat/${userId}`, {
+    method: 'POST',
+    token,
+    body: { text },
+  });
+}
 
 // ================= CLOUDINARY MEDIA API =================
 
-async function uploadToPersonalCloudinary(file, title, kind, batchId, token, isPrivate = false, cloudStorage) {
-  if (!cloudStorage?.cloudName?.trim() || !cloudStorage?.uploadPreset?.trim()) {
-    throw new Error('Add your Cloudinary Cloud Name and unsigned Upload Preset before uploading.');
+async function uploadToPersonalCloudinary(
+  file,
+  title,
+  kind,
+  batchId,
+  token,
+  isPrivate = false,
+  cloudStorage,
+) {
+  if (
+    !cloudStorage?.cloudName?.trim() ||
+    !cloudStorage?.uploadPreset?.trim()
+  ) {
+    throw new Error(
+      'Add your Cloudinary Cloud Name and unsigned Upload Preset before uploading.',
+    );
   }
-  const resourceType = isPrivate ? 'raw' : (file.type?.startsWith('image/') ? 'image' : 'video');
+
+  const resourceType = isPrivate
+    ? 'raw'
+    : file.type?.startsWith('image/')
+      ? 'image'
+      : 'video';
+
   let uploadFile = file;
   let encryption;
+
   if (isPrivate) {
     const encrypted = await encryptFile(file);
-    uploadFile = { uri: encrypted.path, type: 'application/octet-stream', fileName: `blob_${Date.now()}.bin` };
-    encryption = { algorithm: 'AES-256-GCM', iv: encrypted.iv, authTag: encrypted.authTag, encryptedMimeType: encrypted.encryptedMimeType };
+
+    uploadFile = {
+      uri: encrypted.path,
+      type: 'application/octet-stream',
+      fileName: `blob_${Date.now()}.bin`,
+    };
+
+    encryption = {
+      algorithm: 'AES-256-GCM',
+      iv: encrypted.iv,
+      authTag: encrypted.authTag,
+      encryptedMimeType: encrypted.encryptedMimeType,
+    };
   }
+
   const body = new FormData();
-  body.append('file', { uri: uploadFile.uri, type: uploadFile.type || 'application/octet-stream', name: uploadFile.fileName || `blob_${Date.now()}.bin` });
-  body.append('upload_preset', cloudStorage.uploadPreset.trim());
-  const uploadCloudName = cloudStorage.cloudName.trim();
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${uploadCloudName}/${resourceType}/upload`, {
-    method: 'POST', body,
+
+  body.append('file', {
+    uri: uploadFile.uri,
+    type: uploadFile.type || 'application/octet-stream',
+    name: uploadFile.fileName || `blob_${Date.now()}.bin`,
   });
+
+  body.append(
+    'upload_preset',
+    cloudStorage.uploadPreset.trim(),
+  );
+
+  const uploadCloudName = cloudStorage.cloudName.trim();
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${uploadCloudName}/${resourceType}/upload`,
+    {
+      method: 'POST',
+      body,
+    },
+  );
+
   const uploaded = await response.json();
-  if (!response.ok || !uploaded.public_id) throw new Error(uploaded.error?.message || 'Cloudinary upload failed');
-  if (isPrivate) await RNFS.unlink(uploadFile.uri).catch(() => {});
-  return registerMedia({ ...uploaded, cloudName: uploadCloudName, title, kind, batchId, isPrivate, encryption }, token);
+
+  if (!response.ok || !uploaded.public_id) {
+    throw new Error(
+      uploaded.error?.message || 'Cloudinary upload failed',
+    );
+  }
+
+  if (isPrivate) {
+    await RNFS.unlink(uploadFile.uri).catch(() => {});
+  }
+
+  return registerMedia(
+    {
+      ...uploaded,
+      cloudName: uploadCloudName,
+      title,
+      kind,
+      batchId,
+      isPrivate,
+      encryption,
+    },
+    token,
+  );
 }
 
 async function registerMedia(metadata, token) {
-  return request('/media/register', { method: 'POST', token, body: metadata });
+  return request('/media/register', {
+    method: 'POST',
+    token,
+    body: metadata,
+  });
 }
 
 export async function uploadMedia(
@@ -421,7 +399,15 @@ export async function uploadMedia(
   isPrivate = false,
   cloudStorage,
 ) {
-  return uploadToPersonalCloudinary(file, title, kind, batchId, token, isPrivate, cloudStorage);
+  return uploadToPersonalCloudinary(
+    file,
+    title,
+    kind,
+    batchId,
+    token,
+    isPrivate,
+    cloudStorage,
+  );
 }
 
 export async function uploadLibraryMedia(
@@ -431,85 +417,47 @@ export async function uploadLibraryMedia(
   isPrivate = false,
   cloudStorage,
 ) {
-  return uploadToPersonalCloudinary(file, title, 'library', null, token, isPrivate, cloudStorage);
+  return uploadToPersonalCloudinary(
+    file,
+    title,
+    'library',
+    null,
+    token,
+    isPrivate,
+    cloudStorage,
+  );
 }
 
 export async function getMyMedia(token, cloudName) {
-  const query = cloudName ? `?cloudName=${encodeURIComponent(cloudName)}` : '';
-  const response = await apiFetch(
-    `${API_BASE_URL}/media/my-uploads${query}`,
-    {
-      headers: getHeaders(token),
-    },
-  );
+  const query = cloudName
+    ? `?cloudName=${encodeURIComponent(cloudName)}`
+    : '';
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to fetch user uploads',
-    );
-  }
-
-  return data;
+  return request(`/media/my-uploads${query}`, {
+    token,
+    fallbackMessage: 'Failed to fetch user uploads',
+  });
 }
 
 export async function getPrivateMedia(token) {
   return request('/media/private', { token });
 }
 
-export async function deleteMedia(
-  id,
-  token,
-) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/media/${id}`,
-    {
-      method: 'DELETE',
-      headers: getHeaders(token),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to delete media',
-    );
-  }
-
-  return data;
+export async function deleteMedia(id, token) {
+  return request(`/media/${id}`, {
+    method: 'DELETE',
+    token,
+    fallbackMessage: 'Failed to delete media',
+  });
 }
 
-
-export async function deleteMediaByUrl(
-  imageUrl,
-  token,
-) {
-  const response = await apiFetch(
-    `${API_BASE_URL}/media/by-url`,
-    {
-      method: 'DELETE',
-      headers: getHeaders(token),
-
-      body: JSON.stringify({
-        imageUrl,
-      }),
-    },
-  );
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to delete image from Cloudinary',
-    );
-  }
-
-  return data;
+export async function deleteMediaByUrl(imageUrl, token) {
+  return request('/media/by-url', {
+    method: 'DELETE',
+    token,
+    body: { imageUrl },
+    fallbackMessage: 'Failed to delete image from Cloudinary',
+  });
 }
 
 export async function updateMedia(
@@ -519,22 +467,13 @@ export async function updateMedia(
 ) {
   const formData = new FormData();
 
-  formData.append(
-    'title',
-    title || '',
-  );
+  formData.append('title', title || '');
 
   if (image) {
     formData.append('image', {
       uri: image.uri,
-
-      type:
-        image.type ||
-        'image/jpeg',
-
-      name:
-        image.fileName ||
-        `replacement_${Date.now()}.jpg`,
+      type: image.type || 'image/jpeg',
+      name: image.fileName || `replacement_${Date.now()}.jpg`,
     });
   }
 
@@ -542,24 +481,12 @@ export async function updateMedia(
     `${API_BASE_URL}/media/${id}`,
     {
       method: 'PUT',
-
       headers: {
-        Authorization:
-          `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
-
       body: formData,
     },
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data.message ||
-      'Failed to update media',
-    );
-  }
-
-  return data;
+  return readResponse(response, 'Failed to update media');
 }
