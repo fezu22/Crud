@@ -1,5 +1,6 @@
-import React from 'react';
-import { ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Image, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 
 const Stat = ({ value, label }) => (
   <View className="flex-1 items-center">
@@ -39,8 +40,34 @@ export default function ProfileScreen({
   onToggleTheme,
   onToggleNotifications,
   onConnectCloud,
+  profileImage,
+  onEditProfileImage,
+  onError,
 }) {
   const dark = theme === 'dark';
+  const [choosingImage, setChoosingImage] = useState(false);
+
+  async function chooseProfileImage() {
+    if (choosingImage) return;
+    setChoosingImage(true);
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.85,
+        selectionLimit: 1,
+      });
+      if (result.didCancel) return;
+      if (result.errorMessage) throw new Error(result.errorMessage);
+      const uri = result.assets?.[0]?.uri;
+      if (!uri) throw new Error('Please choose a profile photo.');
+      await onEditProfileImage?.(uri);
+    } catch (error) {
+      onError?.(error);
+    } finally {
+      setChoosingImage(false);
+    }
+  }
+
   return (
     <ScrollView
       className="flex-1 bg-canvas dark:bg-[#12111a]"
@@ -53,11 +80,29 @@ export default function ProfileScreen({
         Profile
       </Text>
       <View className="items-center py-8">
-        <View className="h-24 w-24 items-center justify-center rounded-[32px] bg-[#eae5ff] dark:bg-[#2c2840]">
-          <Text className="text-4xl font-extrabold text-brand">
-            {(user?.name || 'U')[0].toUpperCase()}
-          </Text>
-        </View>
+        <TouchableOpacity
+          className="relative"
+          onPress={chooseProfileImage}
+          disabled={choosingImage}
+          accessibilityRole="button"
+          accessibilityLabel="Edit profile photo"
+        >
+          {profileImage ? (
+            <Image source={{ uri: profileImage }} className="h-24 w-24 rounded-[32px]" />
+          ) : (
+            <View className="h-24 w-24 items-center justify-center rounded-[32px] bg-[#eae5ff] dark:bg-[#2c2840]">
+              <Text className="text-4xl font-extrabold text-brand">
+                {(user?.name || 'U')[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View className="absolute -bottom-2 -right-2 h-9 w-9 items-center justify-center rounded-full border-4 border-canvas bg-brand dark:border-[#12111a]">
+            {choosingImage ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-base text-white">✎</Text>}
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={chooseProfileImage} disabled={choosingImage}>
+          <Text className="mt-4 text-xs font-extrabold text-brand">Edit profile photo</Text>
+        </TouchableOpacity>
         <Text className="mt-4 text-2xl font-extrabold text-ink dark:text-white">
           {user?.name || 'Tidy User'}
         </Text>

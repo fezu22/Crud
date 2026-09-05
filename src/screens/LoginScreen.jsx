@@ -1,253 +1,521 @@
 import React, { useEffect, useRef, useState } from 'react';
+import './global.css';
 import {
-  ActivityIndicator,
-  Animated,
-  KeyboardAvoidingView,
+  Keyboard,
+  LayoutAnimation,
   Platform,
-  ScrollView,
+  SafeAreaView,
   StatusBar,
-  Text,
-  TextInput,
-  TouchableOpacity,
+  UIManager,
   View,
 } from 'react-native';
-import CenteredModal from '../components/CenteredModal';
-import useReducedMotion from '../hooks/useReducedMotion';
+import {
+  AlertNotificationRoot,
+  ALERT_TYPE,
+  Dialog,
+} from 'react-native-alert-notification';
 
-const taglines = ['Plan softly.', 'Focus clearly.', 'Finish beautifully.'];
+import DraggableSuccessModal from './src/components/DraggableSuccessModal';
+import ConfirmDialog from './src/components/ConfirmDialog';
+import CloudinaryAlert from './src/components/CloudinaryAlert';
+import BottomNav from './src/navigation/BottomNav';
+import HomeScreen from './src/screens/HomeScreen';
+import LoginScreen from './src/screens/LoginScreen';
+import MediaLibraryScreen from './src/screens/MediaLibraryScreen';
+import UploadScreen from './src/screens/UploadScreen';
+import ConnectCloudStorageScreen from './src/screens/ConnectCloudStorageScreen';
+import ProfileScreen from './src/screens/profile/ProfileScreen';
+import ProjectsScreen from './src/screens/projects/ProjectsScreen';
+import ChatScreen from './src/screens/ChatScreen';
+import AdminDashboardScreen from './src/screens/admin/AdminDashboardScreen';
+import ProjectDetailModal from './src/screens/projects/ProjectDetailModal';
+import ProjectFormModal from './src/screens/projects/ProjectFormModal';
+import TaskDetailModal from './src/screens/tasks/TaskDetailModal';
+import TaskFormModal from './src/screens/tasks/TaskFormModal';
+import useFeedItems from './src/hooks/useFeedItems';
+import usePreferences from './src/hooks/usePreferences';
+import useTasks from './src/hooks/useTasks';
+import { appThemes } from './src/theme/appTheme';
+import {
+  cancelTaskReminders,
+  syncTaskReminders,
+} from './src/services/notifications';
+import {
+  createProject,
+  deleteMedia,
+  getCurrentUser,
+  getMyMedia,
+  getProjects,
+  getTasks,
+  loginUser,
+  registerUser,
+  uploadLibraryMedia,
+  uploadMedia,
+  saveCloudinaryConnection,
+  pingActive,
+} from './src/services/api';
+import {
+  clearSession,
+  loadProfileImage,
+  loadSession,
+  saveProfileImage,
+  saveSession,
+} from './src/storage/sessionStorage';
+import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
 
-function Field({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  secureTextEntry,
-  keyboardType = 'default',
-}) {
-  return (
-    <View className="mb-4">
-      <Text className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">
-        {label}
-      </Text>
-      <TextInput
-        className="h-14 rounded-2xl border border-line bg-surface px-4 text-base text-ink"
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#9B96A7"
-        secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType}
-        autoCapitalize="none"
-      />
-    </View>
-  );
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-function RegisterModal({ visible, onClose, onRegister }) {
-  const [name, setName] = useState(''),
-    [identifier, setIdentifier] = useState(''),
-    [password, setPassword] = useState(''),
-    [loading, setLoading] = useState(false),
-    [error, setError] = useState('');
-  const submit = async () => {
-    if (!name.trim() || !identifier.trim() || password.length < 6) {
-      setError('Name, email/phone and a 6 character password are required.');
-      return;
+const emptyConfirm = {
+  visible: false,
+  title: '',
+  message: '',
+  confirmText: 'Confirm',
+  cancelText: 'Cancel',
+  isDestructive: false,
+  onConfirm: null,
+};
+
+function getUserStorageId(currentUser) {
+  return currentUser?.id || currentUser?._id || currentUser?.email || currentUser?.phoneNumber;
+}
+
+export default function App() {
+  const preferences = usePreferences();
+  const [token, setToken] = useState(null);
+  const [user, setUser] = useState(null);
+  const [profileImage, setProfileImage] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [media, setMedia] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('All');
+  const [activeTab, setActiveTab] = useState('home');
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [projectDetailOpen, setProjectDetailOpen] = useState(false);
+  const [projectFormOpen, setProjectFormOpen] = useState(false);
+  const [savingProject, setSavingProject] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [connectCloudOpen, setConnectCloudOpen] = useState(false);
+  const [savingCloud, setSavingCloud] = useState(false);
+  const [cloudAlertOpen, setCloudAlertOpen] = useState(false);
+  // Keep hook order stable for Fast Refresh; cloud checking is immediate now.
+  const [checkingCloud] = useState(false);
+  const [confirm, setConfirm] = useState(emptyConfirm);
+  const [taskOriginTab, setTaskOriginTab] = useState(null);
+  const [successModal, setSuccessModal] = useState({
+    visible: false,
+    message: '',
+    host: 'screen',
+  });
+  const profileUserId = getUserStorageId(user);
+  const successTimeoutRef = useRef(null);
+  const {
+    tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
+    formProject, savingTask, resetTasks, openTaskForm, closeTaskForm, saveTask,
+    toggleTask, toggleSubtask, removeTask, removeTaskImage,
+  } = useTasks({
+    token,
+    user,
+    ask,
+    showError,
+    showSuccess,
+    setMedia,
+    onTaskCompleted: cancelTaskReminders,
+    onTaskDeleted: cancelTaskReminders,
+  });
+  const feedItems = useFeedItems({ tasks, media, search, filter });
+
+  function showSuccess(message, host = 'screen') {
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
     }
-    setLoading(true);
-    setError('');
+    const resolvedHost =
+      host === 'taskDetail' && !selectedTask ? 'screen' : host;
+    setSuccessModal({ visible: true, message, host: resolvedHost });
+    successTimeoutRef.current = setTimeout(() => {
+      setSuccessModal({ visible: false, message: '', host: 'screen' });
+      successTimeoutRef.current = null;
+    }, 2500);
+  }
+
+  function closeSuccess() {
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
+    const host = successModal.host;
+    setSuccessModal({ visible: false, message: '', host: 'screen' });
+    return host;
+  }
+
+  useEffect(() => { restoreSession(); }, []);
+  useEffect(() => {
+    let active = true;
+    if (!profileUserId) {
+      setProfileImage(null);
+      return undefined;
+    }
+    loadProfileImage(profileUserId)
+      .then(uri => { if (active) setProfileImage(uri); })
+      .catch(() => { if (active) setProfileImage(null); });
+    return () => { active = false; };
+  }, [profileUserId]);
+  useEffect(() => {
+    if (!token) return undefined;
+    const id = setInterval(() => pingActive(token).catch(() => {}), 15000);
+    return () => clearInterval(id);
+  }, [token]);
+  useEffect(() => () => {
+    if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+  }, []);
+  useEffect(() => {
+    if (token) loadWorkspace(token);
+    else resetWorkspace();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user?.cloudName]);
+  useEffect(() => {
+    if (!preferences.ready || !token) return;
+    syncTaskReminders(tasks, preferences.notifications).catch(error =>
+      console.warn('Could not sync task reminders:', error),
+    );
+  }, [preferences.notifications, preferences.ready, tasks, token]);
+
+  async function restoreSession() {
     try {
-      await onRegister({
-        name: name.trim(),
-        email: identifier.includes('@') ? identifier.trim() : '',
-        phone: identifier.includes('@') ? '' : identifier.trim(),
-        password,
-      });
-      onClose();
-    } catch (e) {
-      setError(e.message);
+      const session = await loadSession();
+      if (session.token) {
+        setToken(session.token);
+        const fresh = await getCurrentUser(session.token);
+        setUser(fresh.user);
+        await saveSession(session.token, fresh.user);
+      }
+    } catch (error) {
+      console.warn('Failed to load session:', error);
+    }
+  }
+
+  function resetWorkspace() {
+    resetTasks();
+    setMedia([]);
+    setProjects([]);
+    setSelectedProject(null);
+    setProjectDetailOpen(false);
+    setActiveTab('home');
+  }
+  function showError(title, error) {
+    Dialog.show({ type: ALERT_TYPE.DANGER, title, textBody: error.message, button: 'OK' });
+  }
+  function ask(config) {
+    setConfirm({ ...emptyConfirm, ...config, visible: true });
+  }
+  function closeConfirm() {
+    setConfirm(current => ({ ...current, visible: false, onConfirm: null }));
+  }
+  function openTaskDetail(task) {
+    setTaskOriginTab(activeTab);
+    setSelectedTask(task);
+  }
+  function handleSuccessOk() {
+    const host = closeSuccess();
+    if (host === 'taskDetail') {
+      setSelectedTask(null);
+      if (taskOriginTab) {
+        setActiveTab(taskOriginTab);
+      }
+      setTaskOriginTab(null);
+    }
+  }
+
+  async function loadWorkspace(authToken = token) {
+    if (!authToken) return;
+    setLoading(true);
+    try {
+      const [taskData, mediaData, projectData] = await Promise.all([
+        getTasks(authToken).catch(() => []),
+        user?.cloudName
+          ? getMyMedia(authToken, user.cloudName).catch(() => [])
+          : Promise.resolve([]),
+        getProjects(authToken).catch(() => []),
+      ]);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      const hasCloud = Boolean(user?.cloudName && user?.uploadPreset);
+      setTasks((taskData || []).map(task => hasCloud ? task : { ...task, imageUrl: '', imageUrls: [] }));
+      setMedia(mediaData || []);
+      setProjects(projectData || []);
+    } catch (error) {
+      showError('Could not load workspace', error);
     } finally {
       setLoading(false);
     }
-  };
-  return (
-    <CenteredModal visible={visible} onClose={onClose}>
-      <View className="bg-canvas px-6 pb-7 pt-6">
-          <View className="mb-5 h-1 w-10 self-center rounded-full bg-line" />
-          <Text className="text-3xl font-extrabold text-ink">
-            Create account
-          </Text>
-          <Text className="mb-6 mt-1 text-sm text-muted">
-            Start organizing your day in seconds.
-          </Text>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            <Field
-              label="Name"
-              value={name}
-              onChangeText={setName}
-              placeholder="Your name"
-            />
-            <Field
-              label="Email or phone"
-              value={identifier}
-              onChangeText={setIdentifier}
-              placeholder="you@example.com"
-            />
-            <Field
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              placeholder="At least 6 characters"
-              secureTextEntry
-            />
-            {error ? (
-              <Text className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-600">
-                {error}
-              </Text>
-            ) : null}
-            <TouchableOpacity
-              className="h-14 items-center justify-center rounded-2xl bg-brand"
-              onPress={submit}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text className="text-base font-extrabold text-white">
-                  Create account
-                </Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity className="mt-5 items-center" onPress={onClose}>
-              <Text className="font-semibold text-muted">Back to sign in</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-    </CenteredModal>
-  );
-}
-
-export default function LoginScreen({ onLogin, onRegister, isLoading }) {
-  const [identifier, setIdentifier] = useState(''),
-    [password, setPassword] = useState(''),
-    [error, setError] = useState(''),
-    [registerOpen, setRegisterOpen] = useState(false),
-    [tagline, setTagline] = useState(0);
-  const fade = useRef(new Animated.Value(1)).current;
-  const reduceMotion = useReducedMotion();
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (reduceMotion) {
-        setTagline(i => (i + 1) % taglines.length);
-        return;
-      }
-      Animated.timing(fade, {
-        toValue: 0,
-        duration: 260,
-        useNativeDriver: true,
-      }).start(() => {
-        setTagline(i => (i + 1) % taglines.length);
-        Animated.timing(fade, {
-          toValue: 1,
-          duration: 320,
-          useNativeDriver: true,
-        }).start();
-      });
-    }, 2600);
-    return () => clearInterval(timer);
-  }, [fade, reduceMotion]);
-  const submit = async () => {
-    if (!identifier.trim() || !password) {
-      setError('Enter your email/phone and password.');
-      return;
-    }
-    setError('');
+  }
+  async function refresh() {
+    setRefreshing(true);
+    await loadWorkspace();
+    setRefreshing(false);
+  }
+  async function login(credentials) {
+    Keyboard.dismiss();
+    setAuthLoading(true);
     try {
-      await onLogin({ identifier: identifier.trim(), password });
-    } catch (e) {
-      setError(e.message);
+      const data = await loginUser(credentials.identifier, credentials.password);
+      if (data.user?.encryptionSalt) deriveSessionKey(credentials.password, data.user.encryptionSalt);
+      setToken(data.token);
+      setUser(data.user);
+      await saveSession(data.token, data.user);
+    } catch (error) {
+      showError('Sign In Failed', error);
+      throw error;
+    } finally {
+      setAuthLoading(false);
     }
-  };
-  return (
-    <View className="flex-1 bg-canvas">
-      <StatusBar barStyle="light-content" backgroundColor="#6750E8" />
-      <View className="h-64 overflow-hidden rounded-b-[40px] bg-brand px-7 pb-8 pt-12">
-        <View className="h-12 w-12 items-center justify-center rounded-2xl bg-white/20">
-          <Text className="text-xl font-black text-white">✓</Text>
+  }
+  async function register(form) {
+    const identifier = form.email || form.phone;
+    const data = await registerUser(form.name, identifier, form.password);
+    if (data.user?.encryptionSalt) deriveSessionKey(form.password, data.user.encryptionSalt);
+    setToken(data.token);
+    setUser(data.user);
+    await saveSession(data.token, data.user);
+  }
+  function logout() {
+    ask({
+      title: 'Log Out',
+      message: 'Are you sure you want to sign out?',
+      confirmText: 'Sign Out',
+      isDestructive: true,
+      onConfirm: async () => {
+        setToken(null);
+        setUser(null);
+        clearSessionKey();
+        resetWorkspace();
+        await clearSession();
+      },
+    });
+  }
+  async function editProfileImage(uri) {
+    const userId = getUserStorageId(user);
+    if (!userId || !uri) return;
+    await saveProfileImage(userId, uri);
+    setProfileImage(uri);
+  }
+  function removeMedia(item) {
+    const ids = item.mediaIds?.length ? item.mediaIds : [item._id];
+    ask({
+      title: 'Delete Media',
+      message: ids.length > 1
+        ? `Permanently delete these ${ids.length} uploaded images?`
+        : 'Permanently delete this uploaded image?',
+      confirmText: 'Delete',
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await Promise.all(ids.map(id => deleteMedia(id, token)));
+          setMedia(items => items.filter(value => !ids.includes(value._id)));
+        } catch (error) {
+          showError('Could not delete media', error);
+        }
+      },
+    });
+  }
+  async function addLibraryMedia(file, title) {
+    setUploadingMedia(true);
+    try {
+      const fresh = await getCurrentUser(token);
+      setUser(fresh.user);
+      await saveSession(token, fresh.user);
+      const uploaded = await uploadLibraryMedia(file, title, token, false, { cloudName: fresh.user.cloudName, uploadPreset: fresh.user.uploadPreset });
+      setMedia(items => [uploaded, ...items]);
+      showSuccess('Media uploaded!');
+    } catch (error) {
+      throw error;
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+  async function ensureCloudStorage() {
+    // Do not wait for a network round-trip when the current user clearly has
+    // no personal Cloudinary details. Show the connection prompt instantly.
+    if (!user?.cloudName || !user?.uploadPreset) {
+      setCloudAlertOpen(true);
+      return false;
+    }
+    // The picker should open immediately. The upload handlers fetch the
+    // profile again at upload time, so this check need not block the picker.
+    return true;
+  }
+  async function connectCloud(cloudName, uploadPreset) {
+    setSavingCloud(true);
+    try {
+      const data = await saveCloudinaryConnection(cloudName, uploadPreset, token);
+      setUser(data.user);
+      await saveSession(token, data.user);
+      await loadWorkspace(token);
+      setConnectCloudOpen(false);
+      showSuccess('Cloud storage connected!');
+    } finally { setSavingCloud(false); }
+  }
+  function removeLibraryMedia(item) {
+    ask({
+      title: 'Delete Media',
+      message: 'Delete this file from Cloudinary and your library?',
+      confirmText: 'Delete',
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteMedia(item._id, token);
+          setMedia(items => items.filter(value => value._id !== item._id));
+        } catch (error) {
+          showError('Could not delete media', error);
+        }
+      },
+    });
+  }
+  async function saveProject(form) {
+    setSavingProject(true);
+    try {
+      const project = await createProject(form, token);
+      setProjects(items => [project, ...items]);
+      setProjectFormOpen(false);
+    } catch (error) {
+      showError('Could not save project', error);
+    } finally {
+      setSavingProject(false);
+    }
+  }
+
+  if (!token) {
+    return (
+      <AlertNotificationRoot theme={preferences.theme}>
+        <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
+          <LoginScreen onLogin={login} onRegister={register} isLoading={authLoading} />
+          <ConfirmDialog config={confirm} onCancel={closeConfirm} />
         </View>
-        <Text className="mt-6 text-5xl font-black tracking-tight text-white">
-          Tidy
-        </Text>
-        <Animated.Text
-          style={{ opacity: fade }}
-          className="mt-3 text-xl font-semibold text-white/80"
-        >
-          {taglines[tagline]}
-        </Animated.Text>
-        <View className="absolute -right-12 -top-10 h-44 w-44 rounded-full bg-white/10" />
-        <View className="absolute -bottom-20 left-20 h-40 w-40 rounded-full bg-white/10" />
+      </AlertNotificationRoot>
+    );
+  }
+
+  if (user?.role === 'admin') {
+    return <AlertNotificationRoot theme={preferences.theme}><View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} /><AdminDashboardScreen token={token} user={user} onLogout={logout} onError={error => showError('Chat error', error)} /><ConfirmDialog config={confirm} onCancel={closeConfirm} /></SafeAreaView></View></AlertNotificationRoot>;
+  }
+
+  return (
+    <AlertNotificationRoot theme={preferences.theme}>
+      <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
+        <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
+          <StatusBar
+            barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'}
+            backgroundColor={preferences.theme === 'dark' ? '#12111a' : '#ffffff'}
+          />
+          {connectCloudOpen ? (
+            <ConnectCloudStorageScreen initialCloudName={user?.cloudName} initialUploadPreset={user?.uploadPreset} saving={savingCloud} onSave={connectCloud} onBack={() => setConnectCloudOpen(false)} />
+          ) : activeTab === 'upload' ? (
+            <UploadScreen user={user} token={token} uploading={uploadingMedia}
+              onUpload={async file => {
+                setUploadingMedia(true);
+                try {
+                  const fresh = await getCurrentUser(token);
+                  setUser(fresh.user);
+                  await saveSession(token, fresh.user);
+                  const uploaded = await uploadMedia(file, file.fileName || 'Upload', token, 'upload', null, false, { cloudName: fresh.user.cloudName, uploadPreset: fresh.user.uploadPreset });
+                  setMedia(items => [uploaded, ...items]);
+                  showSuccess('Upload complete!');
+                } finally { setUploadingMedia(false); }
+              }}
+              onNeedCloudConnection={ensureCloudStorage}
+              checkingCloud={checkingCloud}
+              onError={error => showError('Upload failed', error)} />
+          ) : activeTab === 'home' ? (
+            <HomeScreen
+              user={user} tasks={tasks} items={feedItems} loading={loading}
+              refreshing={refreshing} searchText={search} onSearch={setSearch}
+              filter={filter} onFilter={setFilter} onRefresh={refresh}
+              onTask={openTaskDetail} onDeleteMedia={removeMedia}
+              onAddTask={() => openTaskForm()}
+              onProfile={() => setActiveTab('profile')}
+            />
+          ) : activeTab === 'chat' ? (
+            <ChatScreen token={token} user={user} onError={error => showError('Chat error', error)} />
+          ) : activeTab === 'projects' ? (
+            <ProjectsScreen
+              projects={projects} tasks={tasks}
+              onAdd={() => setProjectFormOpen(true)}
+              onOpen={project => {
+                setSelectedProject(project);
+                setProjectDetailOpen(true);
+              }}
+            />
+          ) : activeTab === 'media' ? (
+            <MediaLibraryScreen
+              media={media}
+              uploading={uploadingMedia}
+              onUpload={addLibraryMedia}
+              onNeedCloudConnection={ensureCloudStorage}
+              checkingCloud={checkingCloud}
+              onDelete={removeLibraryMedia}
+              onError={error => showError('Could not select media', error)}
+            />
+          ) : (
+            <ProfileScreen
+              user={user} tasks={tasks} projects={projects} onLogout={logout}
+              profileImage={profileImage} onEditProfileImage={editProfileImage}
+              onError={error => showError('Could not update profile photo', error)}
+              theme={preferences.theme} notifications={preferences.notifications}
+              onToggleTheme={preferences.toggleTheme}
+              onToggleNotifications={preferences.toggleNotifications}
+              onConnectCloud={() => setConnectCloudOpen(true)}
+            />
+          )}
+          {!connectCloudOpen && <BottomNav active={activeTab} onChange={setActiveTab} />}
+          <ProjectDetailModal
+            visible={projectDetailOpen} project={selectedProject} tasks={tasks}
+            onClose={() => setProjectDetailOpen(false)} onTask={openTaskDetail}
+            onAddTask={project => openTaskForm(null, project)}
+          />
+          <TaskDetailModal
+            visible={!!selectedTask && !taskFormOpen} task={selectedTask}
+            onClose={() => {
+              setSelectedTask(null);
+              if (taskOriginTab) setActiveTab(taskOriginTab);
+              setTaskOriginTab(null);
+            }}
+            onToggle={toggleTask}
+            onEdit={task => openTaskForm(task)} onDelete={removeTask}
+            onToggleSubtask={toggleSubtask}
+            successNotification={
+              successModal.host === 'taskDetail' ? successModal : null
+            }
+            onSuccessOk={handleSuccessOk}
+          />
+          <TaskFormModal
+            visible={taskFormOpen} task={editingTask} project={formProject}
+            projects={projects} saving={savingTask} onClose={closeTaskForm}
+            onSave={saveTask} onDeleteImage={removeTaskImage}
+            onNeedCloudConnection={ensureCloudStorage}
+            onError={error => showError('Could not choose image', error)}
+          />
+          <ProjectFormModal
+            visible={projectFormOpen} saving={savingProject}
+            onClose={() => setProjectFormOpen(false)} onSave={saveProject}
+          />
+          <ConfirmDialog config={confirm} onCancel={closeConfirm} />
+          <CloudinaryAlert
+            visible={cloudAlertOpen}
+            onCancel={() => setCloudAlertOpen(false)}
+            onConfirm={() => { setCloudAlertOpen(false); setConnectCloudOpen(true); }}
+          />
+        </SafeAreaView>
+        {successModal.visible && successModal.host === 'screen' && (
+          <DraggableSuccessModal
+            visible={successModal.visible}
+            message={successModal.message}
+            onClose={handleSuccessOk}
+          />
+        )}
       </View>
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerClassName="px-6 pb-10 pt-8"
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text className="text-3xl font-extrabold text-ink">Welcome back</Text>
-          <Text className="mb-7 mt-2 text-sm text-muted">
-            Sign in and continue where you left off.
-          </Text>
-          <Field
-            label="Email or phone"
-            value={identifier}
-            onChangeText={setIdentifier}
-            placeholder="you@example.com"
-          />
-          <Field
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Your password"
-            secureTextEntry
-          />
-          {error ? (
-            <Text className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </Text>
-          ) : null}
-          <TouchableOpacity
-            className="h-14 items-center justify-center rounded-2xl bg-brand"
-            onPress={submit}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="text-base font-extrabold text-white">
-                Sign in
-              </Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            className="mt-7 items-center"
-            onPress={() => setRegisterOpen(true)}
-          >
-            <Text className="text-sm text-muted">
-              New to Tidy?{' '}
-              <Text className="font-extrabold text-brand">
-                Create an account
-              </Text>
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-      <RegisterModal
-        visible={registerOpen}
-        onClose={() => setRegisterOpen(false)}
-        onRegister={onRegister}
-      />
-    </View>
+    </AlertNotificationRoot>
   );
 }

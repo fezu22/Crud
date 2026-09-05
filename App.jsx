@@ -54,7 +54,13 @@ import {
   saveCloudinaryConnection,
   pingActive,
 } from './src/services/api';
-import { clearSession, loadSession, saveSession } from './src/storage/sessionStorage';
+import {
+  clearSession,
+  loadProfileImage,
+  loadSession,
+  saveProfileImage,
+  saveSession,
+} from './src/storage/sessionStorage';
 import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -71,10 +77,15 @@ const emptyConfirm = {
   onConfirm: null,
 };
 
+function getUserStorageId(currentUser) {
+  return currentUser?.id || currentUser?._id || currentUser?.email || currentUser?.phoneNumber;
+}
+
 export default function App() {
   const preferences = usePreferences();
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
+  const [profileImage, setProfileImage] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [media, setMedia] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -100,6 +111,7 @@ export default function App() {
     message: '',
     host: 'screen',
   });
+  const profileUserId = getUserStorageId(user);
   const successTimeoutRef = useRef(null);
   const {
     tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
@@ -141,6 +153,17 @@ export default function App() {
   }
 
   useEffect(() => { restoreSession(); }, []);
+  useEffect(() => {
+    let active = true;
+    if (!profileUserId) {
+      setProfileImage(null);
+      return undefined;
+    }
+    loadProfileImage(profileUserId)
+      .then(uri => { if (active) setProfileImage(uri); })
+      .catch(() => { if (active) setProfileImage(null); });
+    return () => { active = false; };
+  }, [profileUserId]);
   useEffect(() => {
     if (!token) return undefined;
     const id = setInterval(() => pingActive(token).catch(() => {}), 15000);
@@ -272,6 +295,12 @@ export default function App() {
         await clearSession();
       },
     });
+  }
+  async function editProfileImage(uri) {
+    const userId = getUserStorageId(user);
+    if (!userId || !uri) return;
+    await saveProfileImage(userId, uri);
+    setProfileImage(uri);
   }
   function removeMedia(item) {
     const ids = item.mediaIds?.length ? item.mediaIds : [item._id];
@@ -406,7 +435,7 @@ export default function App() {
               filter={filter} onFilter={setFilter} onRefresh={refresh}
               onTask={openTaskDetail} onDeleteMedia={removeMedia}
               onAddTask={() => openTaskForm()}
-              onUpload={() => { ensureCloudStorage().then(ok => ok && setActiveTab('upload')).catch(error => showError('Could not check cloud storage', error)); }}
+              onProfile={() => setActiveTab('profile')}
             />
           ) : activeTab === 'chat' ? (
             <ChatScreen token={token} user={user} onError={error => showError('Chat error', error)} />
@@ -432,6 +461,8 @@ export default function App() {
           ) : (
             <ProfileScreen
               user={user} tasks={tasks} projects={projects} onLogout={logout}
+              profileImage={profileImage} onEditProfileImage={editProfileImage}
+              onError={error => showError('Could not update profile photo', error)}
               theme={preferences.theme} notifications={preferences.notifications}
               onToggleTheme={preferences.toggleTheme}
               onToggleNotifications={preferences.toggleNotifications}
@@ -463,13 +494,19 @@ export default function App() {
             visible={taskFormOpen} task={editingTask} project={formProject}
             projects={projects} saving={savingTask} onClose={closeTaskForm}
             onSave={saveTask} onDeleteImage={removeTaskImage}
+            onNeedCloudConnection={ensureCloudStorage}
+            onError={error => showError('Could not choose image', error)}
           />
           <ProjectFormModal
             visible={projectFormOpen} saving={savingProject}
             onClose={() => setProjectFormOpen(false)} onSave={saveProject}
           />
           <ConfirmDialog config={confirm} onCancel={closeConfirm} />
-          <CloudinaryAlert visible={cloudAlertOpen} onConfirm={() => { setCloudAlertOpen(false); setConnectCloudOpen(true); }} />
+          <CloudinaryAlert
+            visible={cloudAlertOpen}
+            onCancel={() => setCloudAlertOpen(false)}
+            onConfirm={() => { setCloudAlertOpen(false); setConnectCloudOpen(true); }}
+          />
         </SafeAreaView>
         {successModal.visible && successModal.host === 'screen' && (
           <DraggableSuccessModal

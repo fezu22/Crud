@@ -54,6 +54,8 @@ export default function TaskFormModal({
   onClose,
   onSave,
   onDeleteImage,
+  onNeedCloudConnection,
+  onError,
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -90,8 +92,15 @@ export default function TaskFormModal({
 
 
   const pick = async () => {
-    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 8 });
-    if (result.assets) setImages(curr => [...curr, ...result.assets.filter(a => a.uri)].slice(0, 8));
+    try {
+      if (onNeedCloudConnection && !(await onNeedCloudConnection())) return;
+      const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 8 });
+      if (result.didCancel) return;
+      if (result.errorMessage) throw new Error(result.errorMessage);
+      if (result.assets) setImages(curr => [...curr, ...result.assets.filter(a => a.uri)].slice(0, 8));
+    } catch (error) {
+      onError?.(error);
+    }
   };
 
   const addSubtask = () => {

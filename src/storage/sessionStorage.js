@@ -3,6 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const TOKEN_KEY = '@medi_user_token';
 const USER_KEY = '@medi_user_data';
 
+function profileImageKey(userId) {
+  return `@medi_profile_image_${userId}`;
+}
+
 export async function loadSession() {
   const [token, rawUser] = await Promise.all([
     AsyncStorage.getItem(TOKEN_KEY),
@@ -21,4 +25,14 @@ export async function clearSession() {
     AsyncStorage.removeItem(TOKEN_KEY),
     AsyncStorage.removeItem(USER_KEY),
   ]);
+}
+
+export async function loadProfileImage(userId) {
+  if (!userId) return null;
+  return AsyncStorage.getItem(profileImageKey(userId));
+}
+
+export async function saveProfileImage(userId, uri) {
+  if (!userId || !uri) return;
+  await AsyncStorage.setItem(profileImageKey(userId), uri);
 }

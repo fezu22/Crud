@@ -162,10 +162,13 @@ export default function RealCallScreen({
                 const stream =
                     await mediaDevices.getUserMedia({
                         audio: true,
-                        video:
-                            callType === 'video'
-                                ? { facingMode: 'user' }
-                                : false,
+                      video:
+  callType === 'video'
+    ? {
+        frameRate: 30,
+        facingMode: 'user',
+      }
+    : false,
                     });
 
                 if (!mounted) {
@@ -191,15 +194,29 @@ export default function RealCallScreen({
                     .getTracks()
                     .forEach(track => peer.addTrack(track, stream));
 
-                peer.ontrack = event => {
-                    const streamFromPeer =
-                        event.streams?.[0];
+               const handleRemoteStream = event => {
+  const streamFromPeer =
+    event.streams?.[0] || event.stream;
 
-                    if (streamFromPeer) {
-                        setRemoteStream(streamFromPeer);
-                        setStatus('connected');
-                    }
-                };
+  if (streamFromPeer) {
+    setRemoteStream(streamFromPeer);
+    setStatus('connected');
+  }
+};
+
+peer.ontrack = handleRemoteStream;
+
+if (peer.addEventListener) {
+  peer.addEventListener(
+    'track',
+    handleRemoteStream,
+  );
+
+  peer.addEventListener(
+    'addstream',
+    handleRemoteStream,
+  );
+}
 
                 peer.onicecandidate = event => {
                     if (
@@ -452,8 +469,9 @@ export default function RealCallScreen({
                     streamURL={remoteStream.toURL()}
                     style={styles.remoteVideo}
                     objectFit="cover"
+                    zOrder={0}
                 />
-            ) : (
+            ) : ( 
                 <View style={styles.voiceBackground} />
             )}
 
@@ -464,6 +482,7 @@ export default function RealCallScreen({
                     style={styles.localVideo}
                     objectFit="cover"
                     mirror
+                    zOrder={1}
                 />
             ) : null}
 
