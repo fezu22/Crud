@@ -30,6 +30,7 @@ import {
 } from 'react-native-image-picker';
 
 import {
+  keepLocalCopy,
   pick,
   types,
 } from '@react-native-documents/picker';
@@ -51,8 +52,8 @@ import AttachmentSheet from '../../components/chat/AttachmentSheet';
 import ChatBackground from '../../components/chat/ChatBackground';
 import ChatHeader from '../../components/chat/ChatHeader';
 import DocumentBubble from '../../components/chat/DocumentBubble';
+import DocumentPreviewModal from '../../components/chat/DocumentPreviewModal';
 import ImageMessage from '../../components/chat/ImageMessage';
-import ImagePreviewModal from '../../components/chat/ImagePreviewModal';
 import ImageViewerModal from '../../components/chat/ImageViewerModal';
 import MessageBubble from '../../components/chat/MessageBubble';
 import VoiceMessageBubble, {
@@ -65,9 +66,13 @@ import {
   SendIcon,
 } from '../../components/chat/ChatIcons';
 
-import { chatTheme } from '../../theme/chatTheme';
+import { getChatTheme } from '../../theme/chatTheme';
 import { makeId } from './mockChatData';
 import RealCallScreen from './RealCallScreen';
+import {
+  loadCachedMessages,
+  saveCachedMessages,
+} from '../../storage/chatStorage';
 
 function sameDay(firstDate, secondDate) {
   if (!secondDate) {
@@ -108,26 +113,46 @@ function dayLabel(dateString) {
 function buildRows(messages) {
   const rows = [];
 
-  messages.forEach((message, index) => {
-    const previous = messages[index - 1];
+  messages
+    .filter(message => {
+      const type = String(message?.type || message?.messageType || '').toLowerCase();
+      const hasText = Boolean(message?.text || message?.caption);
+      const hasMedia =
+        (type === 'image' || type === 'video') &&
+        Boolean(message?.attachmentUrl || message?.imageUrl);
+      const hasDocument =
+        (type === 'document' || type === 'pdf') &&
+        Boolean(message?.fileName || message?.attachmentUrl);
+      const hasVoice = (
+        type === 'voice' ||
+        type === 'audio' ||
+        type.startsWith('audio/') ||
+        String(message?.fileType || '').toLowerCase().startsWith('audio/') ||
+        Boolean(message?.audioUrl)
+      ) && Boolean(message?.attachmentUrl || message?.audioUrl || message?.uri);
 
-    if (
-      !previous ||
-      !sameDay(previous.createdAt, message.createdAt)
-    ) {
+      return hasText || hasMedia || hasDocument || hasVoice;
+    })
+    .forEach((message, index, visibleMessages) => {
+      const previous = visibleMessages[index - 1];
+
+      if (
+        !previous ||
+        !sameDay(previous.createdAt, message.createdAt)
+      ) {
+        rows.push({
+          kind: 'day',
+          id: `day-${message._id}`,
+          date: message.createdAt,
+        });
+      }
+
       rows.push({
-        kind: 'day',
-        id: `day-${message._id}`,
-        date: message.createdAt,
+        kind: 'message',
+        id: message._id,
+        message,
       });
-    }
-
-    rows.push({
-      kind: 'message',
-      id: message._id,
-      message,
     });
-  });
 
   return rows;
 }
@@ -161,14 +186,24 @@ function normalizeServerMessage(message, userId) {
   // them with the current auth token. Do not let a stale imageUrl win.
   const attachmentUrl = message.attachmentFileId
     ? `${API_BASE_URL}/chat/attachments/${String(message.attachmentFileId)}`
-    : message.attachmentUrl || message.imageUrl || '';
-  const rawType = message.type || message.messageType || 'text';
-  const type = rawType === 'audio' ? 'voice' : rawType;
+    : message.attachmentUrl || message.audioUrl || message.imageUrl || message.uri || '';
+  const rawType = String(
+    message.type ||
+    message.messageType ||
+    (String(message.fileType || '').toLowerCase().startsWith('audio/') ? 'audio' : '') ||
+    (message.audioUrl ? 'audio' : 'text'),
+  ).toLowerCase();
+  const type = rawType === 'audio' || rawType.startsWith('audio/') ? 'voice' : rawType;
+  const mediaCaption =
+    (rawType === 'image' || rawType === 'video') && !message.text
+      ? String(message.caption || '').trim()
+      : '';
 
   return {
     ...message,
     _id: message._id ? String(message._id) : makeId(),
     type,
+    text: message.text || mediaCaption,
     sender: isMine ? 'me' : 'them',
     imageUrl: attachmentUrl,
     attachmentUrl:
@@ -182,6 +217,24 @@ function normalizeServerMessage(message, userId) {
         : 'sent'
       : 'read',
   };
+}
+
+function isDocumentFile(file) {
+  const type = String(file?.type || '').toLowerCase();
+  const name = String(file?.name || '').toLowerCase();
+
+  const isVisual = (
+    type.startsWith('image/') ||
+    type.startsWith('video/') ||
+    /\.(jpg|jpeg|png|gif|webp|heic|heif|mp4|mov|m4v|webm|mkv|avi)$/i.test(name)
+  );
+
+  if (isVisual) return false;
+
+  const hasDocumentExtension = /\.(pdf|doc|docx|txt|csv|xls|xlsx|ppt|pptx|zip|rtf|odt|ods|odp|mp3|wav|m4a|aac|ogg|flac)$/i.test(name);
+  const isDocumentMime = type.startsWith('application/') || type.startsWith('text/') || type.startsWith('audio/');
+
+  return hasDocumentExtension || isDocumentMime;
 }
 
 function ChatSkeleton({ theme, contact }) {
@@ -247,19 +300,26 @@ export default function PremiumChatScreen({
   user,
   onError,
   onBack,
+  themeMode = 'dark',
 }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sendingText, setSendingText] = useState(false);
+  const [contactOnline, setContactOnline] = useState(Boolean(contact?.online));
   const [showJump, setShowJump] = useState(false);
   const [attachmentOpen, setAttachmentOpen] =
     useState(false);
   const [pendingImage, setPendingImage] =
     useState(null);
+  const [pendingDocument, setPendingDocument] =
+    useState(null);
   const [, setUploadingAttachment] = useState(false);
   const [, setUploadProgress] = useState(0);
   const [, setUploadError] = useState('');
   const [viewingImage, setViewingImage] =
+    useState(null);
+  const [viewingDocument, setViewingDocument] =
     useState(null);
   const [recordingOpen, setRecordingOpen] =
     useState(false);
@@ -269,6 +329,7 @@ export default function PremiumChatScreen({
     useState(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const [editingMessage, setEditingMessage] = useState(null);
+  const [deletePromptVisible, setDeletePromptVisible] = useState(false);
 
   const statusTimers = useRef([]);
   const listRef = useRef(null);
@@ -280,7 +341,7 @@ export default function PremiumChatScreen({
     new Animated.Value(0),
   ).current;
 
-  const theme = chatTheme;
+  const theme = getChatTheme(themeMode);
 
   const currentUserId =
     user?.id || user?._id;
@@ -310,6 +371,13 @@ export default function PremiumChatScreen({
 
     callSocketRef.current = socket;
 
+    const onPresenceUpdate = event => {
+      if (String(event?.userId || '') === String(contactId)) {
+        setContactOnline(Boolean(event.online));
+      }
+    };
+    socket.on('presence:update', onPresenceUpdate);
+
     socket.on('call:incoming', call => {
       if (
         call.fromUserId !==
@@ -320,10 +388,11 @@ export default function PremiumChatScreen({
     });
 
     return () => {
+      socket.off('presence:update', onPresenceUpdate);
       socket.disconnect();
       callSocketRef.current = null;
     };
-  }, [currentUserId, token]);
+  }, [contactId, currentUserId, token]);
 
   useEffect(() => {
     const socket = callSocketRef.current;
@@ -346,9 +415,13 @@ export default function PremiumChatScreen({
     };
 
     const onChatMessageDeleted = event => {
-      if (event.conversationId !== conversationId) return;
-      setMessages(current => current.filter(item => String(item._id) !== String(event.messageId)));
-      setSelectedMessageIds(current => current.filter(id => String(id) !== String(event.messageId)));
+      const deletedIds = new Set(
+        (event.messageIds || (event.messageId ? [event.messageId] : []))
+          .map(String),
+      );
+      if (!deletedIds.size) return;
+      setMessages(current => current.filter(item => !deletedIds.has(String(item._id))));
+      setSelectedMessageIds(current => current.filter(id => !deletedIds.has(String(id))));
     };
 
     const onChatMessageUpdated = message => {
@@ -441,25 +514,33 @@ export default function PremiumChatScreen({
 
     setLoading(true);
 
-    loadServerMessages().finally(() => {
-      if (mounted) {
+    loadCachedMessages(conversationId).then(cached => {
+      if (mounted && cached.length) {
+        setMessages(cached);
         setLoading(false);
       }
     });
 
-    const interval = setInterval(
-      loadServerMessages,
-      5000,
-    );
+    // Socket.IO keeps this conversation current. Only fetch the database once
+    // when opening the chat, instead of polling it every few seconds.
+    loadServerMessages().finally(() => {
+      if (mounted) setLoading(false);
+    });
 
     return () => {
       mounted = false;
-      clearInterval(interval);
     };
   }, [
+    conversationId,
     loadServerMessages,
     syncWithServer,
   ]);
+
+  useEffect(() => {
+    if (conversationId && messages.length) {
+      saveCachedMessages(conversationId, messages);
+    }
+  }, [conversationId, messages]);
 
   useEffect(() => {
     const timers = statusTimers.current;
@@ -526,6 +607,7 @@ export default function PremiumChatScreen({
         }
         token={token}
         callType={activeCall.type}
+        themeMode={themeMode}
         incomingCall={
           activeCall.incomingCall
         }
@@ -612,6 +694,12 @@ export default function PremiumChatScreen({
   const selectedMessage = selectedMessageIds.length === 1
     ? messages.find(message => message._id === selectedMessageIds[0])
     : null;
+  const selectedMessages = messages.filter(message =>
+    selectedMessageIds.includes(message._id),
+  );
+  const canDeleteForEveryone = selectedMessages.length > 0 && selectedMessages.every(
+    message => message.sender === 'me',
+  );
   const canEditSelectedMessage = Boolean(
     selectedMessage &&
     (selectedMessage.type === 'text' || selectedMessage.messageType === 'text'),
@@ -637,9 +725,14 @@ export default function PremiumChatScreen({
 
       setMessages(current => current.filter(message => !deletable.some(item => item._id === message._id)));
       clearMessageSelection();
+      await loadServerMessages();
     } catch (error) {
       onErrorRef.current?.(error);
     }
+  };
+
+  const promptDeleteOptions = () => {
+    setDeletePromptVisible(true);
   };
 
   const startEditingMessage = () => {
@@ -664,6 +757,7 @@ export default function PremiumChatScreen({
     setText('');
 
     if (syncWithServer) {
+      setSendingText(true);
       try {
         if (editingMessage) {
           const saved = await editChatMessage(
@@ -696,6 +790,8 @@ export default function PremiumChatScreen({
       } catch (error) {
         setText(value);
         onErrorRef.current?.(error);
+      } finally {
+        setSendingText(false);
       }
 
       return;
@@ -708,7 +804,7 @@ export default function PremiumChatScreen({
     const asset = response.assets?.[0];
 
     if (asset?.uri) {
-      setPendingImage({
+      sendImage('', {
         uri: asset.uri,
         previewUri: asset.uri,
         fileName: asset.fileName,
@@ -717,7 +813,6 @@ export default function PremiumChatScreen({
         mediaWidth: asset.width,
         mediaHeight: asset.height,
       });
-
       return;
     }
 
@@ -731,6 +826,7 @@ export default function PremiumChatScreen({
 
   const pickFromGallery = () => {
     setAttachmentOpen(false);
+    setPendingDocument(null);
 
     launchImageLibrary(
       {
@@ -742,6 +838,8 @@ export default function PremiumChatScreen({
       },
       response => {
         if (response.didCancel) {
+          setPendingImage(null);
+          setPendingDocument(null);
           return;
         }
 
@@ -752,6 +850,7 @@ export default function PremiumChatScreen({
 
   const takeWithCamera = () => {
     setAttachmentOpen(false);
+    setPendingDocument(null);
 
     launchCamera(
       {
@@ -763,6 +862,8 @@ export default function PremiumChatScreen({
       },
       response => {
         if (response.didCancel) {
+          setPendingImage(null);
+          setPendingDocument(null);
           return;
         }
 
@@ -783,63 +884,57 @@ export default function PremiumChatScreen({
 
   const pickDocument = async () => {
     setAttachmentOpen(false);
+    setPendingImage(null);
 
     try {
       const [file] = await pick({
-        type: [types.pdf, types.allFiles],
+        type: [
+          types.pdf,
+          types.doc,
+          types.docx,
+          types.plainText,
+          types.csv,
+          types.xls,
+          types.xlsx,
+          types.ppt,
+          types.pptx,
+          types.zip,
+          types.audio,
+        ],
       });
 
       if (!file?.uri) {
         return;
       }
 
-      const documentMessage = appendOutgoing({
-        _id: makeId(),
-        type: file.type?.startsWith('audio/') ? 'audio' : 'document',
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-        attachmentUrl: file.uri,
+      // Android document providers return content:// URIs. Keep a local copy
+      // so the upload receives a readable file path.
+      const [localCopy] = await keepLocalCopy({
+        files: [{
+          uri: file.uri,
+          fileName: file.name || `document-${Date.now()}`,
+          ...(file.isVirtual && file.convertibleToMimeTypes?.[0]?.mimeType
+            ? { convertVirtualFileToType: file.convertibleToMimeTypes[0].mimeType }
+            : {}),
+        }],
+        destination: 'cachesDirectory',
       });
 
-      if (!syncWithServer) {
+      if (localCopy?.status !== 'success' || !localCopy.localUri) {
+        throw new Error(localCopy?.copyError || 'The selected document could not be prepared for review.');
+      }
+
+      const selectedFile = {
+        ...file,
+        uri: localCopy.localUri,
+      };
+
+      if (!isDocumentFile(selectedFile)) {
+        Alert.alert('Document only', 'Please choose a PDF or another document file, not media.');
         return;
       }
 
-      try {
-        setUploadingAttachment(true);
-        setUploadError('');
-        const saved = await uploadChatAttachment(
-          contactId,
-          {
-            uri: file.uri,
-            type: file.type,
-            fileName: file.name,
-            size: file.size,
-          },
-          token,
-          {
-            text: '',
-            type: file.type?.startsWith('audio/') ? 'audio' : 'document',
-          },
-          progress => setUploadProgress(progress),
-        );
-
-        replaceMessage(
-          documentMessage._id,
-          normalizeServerMessage(
-            saved,
-            currentUserId,
-          ),
-        );
-      } catch (error) {
-        removeMessage(documentMessage._id);
-        setUploadError(error.message || 'Upload failed.');
-        onErrorRef.current?.(error);
-      } finally {
-        setUploadingAttachment(false);
-        setUploadProgress(0);
-      }
+      sendDocument(selectedFile);
     } catch (error) {
       const message = String(
         error?.message || '',
@@ -854,8 +949,73 @@ export default function PremiumChatScreen({
     }
   };
 
-  const sendImage = async caption => {
-    const attachment = pendingImage;
+  const sendDocument = async (selectedFile = pendingDocument, resolvedDuration) => {
+    const file = selectedFile;
+    if (!file?.uri) return;
+
+    const isAudio = String(file.type || '').toLowerCase().startsWith('audio/') ||
+      /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(String(file.name || ''));
+    const attachmentType = isAudio ? 'audio' : 'document';
+    const duration = isAudio
+      ? Number(resolvedDuration || file.duration || 0)
+      : 0;
+
+    setPendingDocument(null);
+    setUploadError('');
+
+    const documentMessage = appendOutgoing({
+      _id: makeId(),
+      type: attachmentType,
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      duration,
+      attachmentUrl: file.uri,
+    });
+
+    if (!syncWithServer) return;
+
+    try {
+      setUploadingAttachment(true);
+      const saved = await uploadChatAttachment(
+        contactId,
+        {
+          uri: file.uri,
+          type: file.type,
+          fileName: file.name,
+          size: file.size,
+        },
+        token,
+        {
+          text: '',
+          type: attachmentType,
+          duration,
+        },
+        progress => setUploadProgress(progress),
+      );
+
+      // Attachment upload responses can omit client-only fields such as the
+      // local URI or file name. Keep those fields when replacing the optimistic
+      // bubble, otherwise selection/cancel can leave an empty outgoing card.
+      replaceMessage(
+        documentMessage._id,
+        normalizeServerMessage(
+          { ...documentMessage, ...saved },
+          currentUserId,
+        ),
+      );
+    } catch (error) {
+      removeMessage(documentMessage._id);
+      setUploadError(error.message || 'Upload failed.');
+      onErrorRef.current?.(error);
+    } finally {
+      setUploadingAttachment(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const sendImage = async (caption = '', selectedAttachment = pendingImage) => {
+    const attachment = selectedAttachment;
     const uri = attachment?.uri;
     const trimmedCaption = String(caption || '').trim();
 
@@ -892,8 +1052,8 @@ export default function PremiumChatScreen({
         contactId,
         attachment,
         token,
-        {
-          text: '',
+      {
+          text: trimmedCaption,
           type: messageType,
           caption: trimmedCaption,
           mediaWidth: attachment.mediaWidth,
@@ -905,7 +1065,7 @@ export default function PremiumChatScreen({
       replaceMessage(
         optimisticMessage._id,
         normalizeServerMessage(
-          saved,
+          { ...optimisticMessage, ...saved },
           currentUserId,
         ),
       );
@@ -996,7 +1156,13 @@ export default function PremiumChatScreen({
         },
         progress => setUploadProgress(progress),
       );
-      replaceMessage(voiceMessage._id, normalizeServerMessage(saved, currentUserId));
+      replaceMessage(
+        voiceMessage._id,
+        normalizeServerMessage(
+          { ...voiceMessage, ...saved },
+          currentUserId,
+        ),
+      );
     } catch (error) {
       removeMessage(voiceMessage._id);
       setUploadError(error.message || 'Upload failed.');
@@ -1008,9 +1174,13 @@ export default function PremiumChatScreen({
   };
 
   const renderAttachment = message => {
+    const messageType = String(message.type || message.messageType || '').toLowerCase();
+    const isVideo = messageType === 'video' || String(message.fileType || '').toLowerCase().startsWith('video/');
+
     if (
       message.type === 'image' ||
-      message.type === 'video'
+      message.type === 'video' ||
+      isVideo
     ) {
       return (
         <ImageMessage
@@ -1033,14 +1203,24 @@ export default function PremiumChatScreen({
           message={message}
           theme={theme}
           mine={message.sender === 'me'}
+          onPress={() =>
+            selectedMessageIds.length
+              ? null
+              : setViewingDocument({
+                ...message,
+                uri: message.attachmentUrl || message.uri,
+              })
+          }
         />
       );
     }
 
     if (
-      message.type === 'voice' ||
-      message.type === 'audio' ||
-      message.messageType === 'audio'
+      messageType === 'voice' ||
+      messageType === 'audio' ||
+      messageType.startsWith('audio/') ||
+      String(message.fileType || '').toLowerCase().startsWith('audio/') ||
+      Boolean(message.audioUrl)
     ) {
       return (
         <VoiceMessageBubble
@@ -1135,18 +1315,15 @@ export default function PremiumChatScreen({
                   <Text style={[styles.selectionAction, { color: theme.primary }]}>Edit</Text>
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity onPress={() => deleteSelectedMessages('me')} accessibilityLabel="Delete selected messages for me">
-                <Text style={[styles.selectionAction, { color: theme.ink }]}>Delete for me</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => deleteSelectedMessages('everyone')} accessibilityLabel="Delete selected messages for everyone">
-                <Text style={[styles.selectionAction, { color: theme.danger }]}>Delete for everyone</Text>
+              <TouchableOpacity onPress={promptDeleteOptions} accessibilityLabel="Delete selected messages">
+                <Text style={[styles.selectionAction, { color: theme.danger }]}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
         ) : (
           <ChatHeader
             theme={theme}
-            contact={contact}
+            contact={{ ...contact, online: contactOnline }}
             onBack={onBack}
             onVoiceCall={() => setActiveCall({ type: 'voice' })}
             onVideoCall={() => setActiveCall({ type: 'video' })}
@@ -1171,7 +1348,7 @@ export default function PremiumChatScreen({
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              {loading ? (
+              {loading || sendingText ? (
                 <ActivityIndicator
                   color={theme.primaryLight}
                 />
@@ -1186,7 +1363,9 @@ export default function PremiumChatScreen({
                 ]}>
                 {loading
                   ? 'Loading messages…'
-                  : `No messages yet. Say hello to ${contact.name}!`}
+                  : sendingText
+                    ? ''
+                    : `No messages yet. Say hello to ${contact.name}!`}
               </Text>
             </View>
           }
@@ -1310,16 +1489,6 @@ export default function PremiumChatScreen({
           onDocument={pickDocument}
         />
 
-        <ImagePreviewModal
-          visible={Boolean(pendingImage)}
-          image={pendingImage}
-          theme={theme}
-          onCancel={() =>
-            setPendingImage(null)
-          }
-          onSend={sendImage}
-        />
-
         <ImageViewerModal
           visible={Boolean(viewingImage)}
           image={viewingImage}
@@ -1339,6 +1508,64 @@ export default function PremiumChatScreen({
           onSend={sendVoiceMessage}
           onError={onErrorRef.current}
         />
+
+        <DocumentPreviewModal
+          visible={Boolean(viewingDocument)}
+          document={viewingDocument}
+          theme={theme}
+          token={token}
+          readOnly
+          onCancel={() => setViewingDocument(null)}
+        />
+
+        <Modal
+          visible={deletePromptVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDeletePromptVisible(false)}>
+          <View style={styles.deletePromptOverlay}>
+            <View style={[styles.deletePromptCard, { backgroundColor: theme.surface }]}>
+              <View style={[styles.deletePromptIcon, { backgroundColor: `${theme.danger}22` }]}>
+                <Text style={[styles.deletePromptIconText, { color: theme.danger }]}>!</Text>
+              </View>
+
+              <Text style={[styles.deletePromptTitle, { color: theme.ink }]}>Delete message?</Text>
+              <Text style={[styles.deletePromptText, { color: theme.muted }]}>
+                {selectedMessageIds.length > 1
+                  ? `You selected ${selectedMessageIds.length} messages.`
+                  : canDeleteForEveryone
+                    ? 'Choose how you want to delete this message.'
+                    : 'This message can only be deleted for you.'}
+              </Text>
+
+              {canDeleteForEveryone ? (
+                <TouchableOpacity
+                  style={[styles.deletePromptPrimary, { backgroundColor: theme.danger }]}
+                  onPress={() => {
+                    setDeletePromptVisible(false);
+                    deleteSelectedMessages('everyone');
+                  }}>
+                  <Text style={styles.deletePromptPrimaryText}>Delete for everyone</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              <TouchableOpacity
+                style={[styles.deletePromptSecondary, { borderColor: theme.line }]}
+                onPress={() => {
+                  setDeletePromptVisible(false);
+                  deleteSelectedMessages('me');
+                }}>
+                <Text style={[styles.deletePromptSecondaryText, { color: theme.ink }]}>Delete for me</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.deletePromptCancel}
+                onPress={() => setDeletePromptVisible(false)}>
+                <Text style={[styles.deletePromptCancelText, { color: theme.muted }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={Boolean(incomingCall)}
@@ -1617,6 +1844,88 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+  },
+
+  deletePromptOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.62)',
+  },
+
+  deletePromptCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+  },
+
+  deletePromptIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+
+  deletePromptIconText: {
+    fontSize: 30,
+    fontWeight: '900',
+  },
+
+  deletePromptTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+
+  deletePromptText: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+
+  deletePromptPrimary: {
+    width: '100%',
+    borderRadius: 14,
+    alignItems: 'center',
+    paddingVertical: 13,
+  },
+
+  deletePromptPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  deletePromptSecondary: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 14,
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 10,
+  },
+
+  deletePromptSecondaryText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  deletePromptCancel: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginTop: 2,
+  },
+
+  deletePromptCancelText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   listContent: {

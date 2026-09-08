@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import RNFS from 'react-native-fs';
 import Video from 'react-native-video';
 
@@ -9,9 +9,8 @@ import Video from 'react-native-video';
  */
 export default function ImageMessage({ message, theme, token, onPress }) {
   const uri = message.imageUrl || message.attachmentUrl;
-  const isVideo =
-    message.type === 'video' ||
-    message.fileType?.startsWith('video/');
+  const isVideo = [message.type, message.messageType].some(type => String(type || '').toLowerCase() === 'video') ||
+    String(message.fileType || '').toLowerCase().startsWith('video/');
   const hasStoredDimensions = Boolean(message.mediaWidth && message.mediaHeight);
   const [resolvedUri, setResolvedUri] = useState(isVideo || typeof uri === 'number' ? uri : null);
   const [dimensions, setDimensions] = useState(
@@ -141,13 +140,18 @@ export default function ImageMessage({ message, theme, token, onPress }) {
         },
       ]}>
       {isVideo ? (
-        <Video
-          source={source}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          paused
-          controls
-        />
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Video
+            source={source}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+            paused
+            controls={false}
+          />
+          <View style={styles.videoPlayBadge}>
+            <Text style={styles.videoPlayIcon}>▶</Text>
+          </View>
+        </View>
       ) : (
         <Image
           source={source}
@@ -173,5 +177,23 @@ const styles = StyleSheet.create({
     height: 72,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  videoPlayBadge: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 48,
+    height: 48,
+    marginLeft: -24,
+    marginTop: -24,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.62)',
+  },
+  videoPlayIcon: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    marginLeft: 3,
   },
 });

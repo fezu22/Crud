@@ -34,6 +34,7 @@ export default function MessageBubble({
   onSelect,
 }) {
   const outgoing = mine;
+  const messageText = message.text || message.caption || '';
   return (
     <View style={[styles.row, { justifyContent: outgoing ? 'flex-end' : 'flex-start' }]}>
       {!outgoing && selectionMode ? (
@@ -48,23 +49,21 @@ export default function MessageBubble({
           outgoing ? styles.bubbleOut : styles.bubbleIn,
           {
             backgroundColor: outgoing ? theme.outgoingBase : theme.incomingBubble,
+            borderColor: selected
+              ? theme.primaryLight
+              : outgoing ? 'transparent' : theme.incomingBorder,
           },
-          outgoing ? null : { borderColor: theme.incomingBorder, borderWidth: 1 },
-          selected ? { borderColor: theme.primaryLight, borderWidth: 2 } : null,
         ]}>
-        {outgoing ? (
-          <View style={[styles.tint, { backgroundColor: theme.outgoingTop }]} />
-        ) : null}
-        <View style={styles.content}>
+        <View collapsable={false} style={styles.content}>
           {renderAttachment ? renderAttachment(message) : null}
-          {message.text ? (
+          {messageText ? (
             <Text
               style={{
                 color: outgoing ? '#F5F3FA' : theme.ink,
                 fontSize: 15,
                 lineHeight: 21,
               }}>
-              {message.text}
+              {messageText}
             </Text>
           ) : null}
           <View style={styles.metaRow}>
@@ -124,10 +123,12 @@ const styles = StyleSheet.create({
   bubble: {
     maxWidth: '80%',
     borderRadius: 20,
+    // Keep selection from changing Android's rounded border/clipping geometry.
+    borderWidth: 2,
     paddingHorizontal: 14,
     paddingTop: 10,
     paddingBottom: 6,
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   bubbleOut: {
     borderBottomRightRadius: 6,
@@ -138,10 +139,6 @@ const styles = StyleSheet.create({
   content: {
     minWidth: 0,
     maxWidth: '100%',
-  },
-  tint: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.22,
   },
   metaRow: {
     flexDirection: 'row',

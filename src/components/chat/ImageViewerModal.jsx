@@ -10,24 +10,44 @@ import Video from 'react-native-video';
 export default function ImageViewerModal({ visible, image, theme, token, onClose }) {
   const uri = image?.imageUrl || image?.attachmentUrl || '';
   const isVideo =
-    image?.type === 'video' ||
-    image?.fileType?.startsWith('video/');
+    [image?.type, image?.messageType].some(type => String(type || '').toLowerCase() === 'video') ||
+    String(image?.fileType || '').toLowerCase().startsWith('video/');
   const [resolvedUri, setResolvedUri] = useState(uri);
   const [loading, setLoading] = useState(false);
+  const [playbackError, setPlaybackError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     let downloadJob;
-    setResolvedUri(uri);
+    setResolvedUri(null);
+    setPlaybackError('');
 
-    if (!visible || isVideo || !/^https?:\/\//i.test(uri) || !token) {
+    if (!visible || !uri) {
       setLoading(false);
       return () => {
         cancelled = true;
       };
     }
 
-    const extension = String(image?.fileType || 'image/jpeg')
+    if (!/^https?:\/\//i.test(uri) || !token) {
+      setResolvedUri(uri);
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // Video can stream directly with the auth header. Avoid waiting for an
+    // RNFS copy, which can leave the viewer stuck on its loading indicator.
+    if (isVideo) {
+      setResolvedUri(uri);
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const extension = String(image?.fileType || (isVideo ? 'video/mp4' : 'image/jpeg'))
       .split('/')[1]
       .replace(/[^a-z0-9]/gi, '') || 'jpg';
     const filePath = `${RNFS.CachesDirectoryPath}/viewer-${String(image?._id || Date.now())}.${extension === 'jpeg' ? 'jpg' : extension}`;
@@ -43,11 +63,16 @@ export default function ImageViewerModal({ visible, image, theme, token, onClose
         const stat = await RNFS.stat(filePath).catch(() => null);
         if (!cancelled && result.statusCode >= 200 && result.statusCode < 300 && Number(stat?.size) > 0) {
           setResolvedUri(`file://${filePath}`);
+        } else if (!cancelled) {
+          setPlaybackError(isVideo ? 'The video could not be loaded.' : 'The image could not be loaded.');
         }
         if (!cancelled) setLoading(false);
       })
-      .catch(() => {
-        if (!cancelled) setLoading(false);
+      .catch(error => {
+        if (!cancelled) {
+          setPlaybackError(error?.message || (isVideo ? 'The video could not be loaded.' : 'The image could not be loaded.'));
+          setLoading(false);
+        }
       });
 
     return () => {
@@ -70,7 +95,7 @@ export default function ImageViewerModal({ visible, image, theme, token, onClose
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
+      <View style={styles.backdrop}>
         <View style={styles.header}>
           <TouchableOpacity
             style={[styles.closeButton, { backgroundColor: theme.surface }]}
@@ -81,12 +106,26 @@ export default function ImageViewerModal({ visible, image, theme, token, onClose
         </View>
         {loading ? <ActivityIndicator color={theme.primaryLight || theme.primary} style={styles.loader} /> : null}
         {isVideo ? (
-          <Video
-            source={source}
-            style={styles.image}
-            resizeMode="contain"
-            controls
-          />
+          <View style={styles.videoFrame}>
+            {resolvedUri && !playbackError ? (
+              <Video
+                source={source}
+                style={StyleSheet.absoluteFill}
+                resizeMode="contain"
+                paused={false}
+                controls={false}
+                fullscreen={false}
+                onLoad={() => setLoading(false)}
+                onError={error => {
+                  setPlaybackError(error?.error?.errorString || 'The video could not be played.');
+                  setLoading(false);
+                }}
+              />
+            ) : null}
+            {!loading && playbackError ? (
+              <Text style={styles.errorText}>{playbackError}</Text>
+            ) : null}
+          </View>
         ) : (
           <Image
             source={source}
@@ -100,7 +139,7 @@ export default function ImageViewerModal({ visible, image, theme, token, onClose
             <Text style={styles.caption}>{image.caption}</Text>
           </View>
         ) : null}
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
@@ -126,12 +165,25 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
+  videoFrame: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   loader: {
     position: 'absolute',
     top: '50%',
     left: 0,
     right: 0,
     zIndex: 2,
+  },
+  errorText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 24,
   },
   captionRow: {
     paddingHorizontal: 20,

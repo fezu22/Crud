@@ -16,7 +16,6 @@ import CenteredModal from '../components/CenteredModal';
 import useReducedMotion from '../hooks/useReducedMotion';
 
 const eyeOpenIcon = require('../assets/eye-open.png');
-const eyeClosedIcon = require('../assets/eye-closed.png');
 const taglines = ['Plan softly.', 'Focus clearly.', 'Finish beautifully.'];
 
 function Field({
@@ -54,7 +53,8 @@ function Field({
           >
             <Image
               className="h-6 w-6"
-              source={secureVisible ? eyeClosedIcon : eyeOpenIcon}
+              source={eyeOpenIcon}
+              tintColor="#6C4DF6"
               resizeMode="contain"
             />
           </TouchableOpacity>

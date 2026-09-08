@@ -36,12 +36,15 @@ const publicUser = u => ({
 });
 
 const previewText = message => {
-  if (message.text) {
-    return message.text;
+  const text = String(message.text || '').trim();
+  const caption = String(message.caption || '').trim();
+
+  if (text) {
+    return text;
   }
 
-  if (message.caption) {
-    return message.caption;
+  if (caption) {
+    return caption;
   }
 
   if (message.type === 'image' || message.messageType === 'image') {
@@ -241,6 +244,9 @@ router.get(
 
             lastMessageAt:
               ms[0].createdAt,
+
+            lastMessageType:
+              ms[0].type || ms[0].messageType || 'text',
 
             unreadCount:
               ms.filter(
@@ -457,8 +463,12 @@ router.post(
       });
 
       const io = req.app.get('io');
-      io?.to(`conversation:${conversationId}`).emit('chat:message', message);
-      io?.to(`user:${String(other._id)}`).emit('chat:message', message);
+      const chatEvent = {
+        ...message.toObject(),
+        fromName: req.user.name || req.user.email || 'Medi user',
+      };
+      io?.to(`conversation:${conversationId}`).emit('chat:message', chatEvent);
+      io?.to(`user:${String(other._id)}`).emit('chat:message', chatEvent);
 
       return res.status(201).json(message);
     } catch (error) {
@@ -579,8 +589,9 @@ router.delete(
         _id: { $in: messageIds },
         conversationId,
         $or: [
+          // Only the sender can remove a message for everyone. Recipients
+          // can still use mode=me, which only hides it from their account.
           { sender: req.user._id },
-          { sender: other._id },
         ],
       }).select('_id attachmentFileId');
 
@@ -597,12 +608,13 @@ router.delete(
       const deletedIds = messages.map(message => String(message._id));
       await ChatMessage.deleteMany({ _id: { $in: deletedIds } });
       const io = req.app.get('io');
-      deletedIds.forEach(messageId => {
-        io?.to(`conversation:${conversationId}`).emit('chat:message-deleted', {
-          conversationId,
-          messageId,
-        });
-      });
+      const deletionEvent = {
+        conversationId,
+        messageIds: deletedIds,
+      };
+      io?.to(`conversation:${conversationId}`).emit('chat:message-deleted', deletionEvent);
+      io?.to(`user:${String(req.user._id)}`).emit('chat:message-deleted', deletionEvent);
+      io?.to(`user:${String(other._id)}`).emit('chat:message-deleted', deletionEvent);
 
       return res.json({ message: 'Messages deleted', deletedIds });
     } catch (error) {
@@ -647,10 +659,13 @@ router.delete(
       }
 
       await message.deleteOne();
-      req.app.get('io')?.to(`conversation:${conversationId}`).emit('chat:message-deleted', {
+      const deletionEvent = {
         conversationId,
-        messageId: String(message._id),
-      });
+        messageIds: [String(message._id)],
+      };
+      req.app.get('io')?.to(`conversation:${conversationId}`).emit('chat:message-deleted', deletionEvent);
+      req.app.get('io')?.to(`user:${String(req.user._id)}`).emit('chat:message-deleted', deletionEvent);
+      req.app.get('io')?.to(`user:${String(other._id)}`).emit('chat:message-deleted', deletionEvent);
 
       return res.json({ message: 'Message deleted', messageId: String(message._id) });
     } catch (error) {
@@ -775,8 +790,12 @@ router.post(
     });
 
     const io = req.app.get('io');
-    io?.to(`conversation:${conversationId}`).emit('chat:message', message);
-    io?.to(`user:${String(other._id)}`).emit('chat:message', message);
+    const chatEvent = {
+      ...message.toObject(),
+      fromName: req.user.name || req.user.email || 'Medi user',
+    };
+    io?.to(`conversation:${conversationId}`).emit('chat:message', chatEvent);
+    io?.to(`user:${String(other._id)}`).emit('chat:message', chatEvent);
 
     return res.status(201).json(message);
   },

@@ -8,6 +8,7 @@ import notifee, {
 
 const APP_NAME = 'Medi';
 const CHANNEL_ID = 'medi-task-reminders';
+const CHAT_CHANNEL_ID = 'medi-chat-messages';
 const REMINDER_PREFIX = 'task-reminder-';
 const LEGACY_TIMER_PREFIX = 'task-timer-';
 const ADVANCE_MS = 2 * 60000;
@@ -29,12 +30,54 @@ async function ensureChannel() {
   });
 }
 
+async function ensureChatChannel() {
+  return notifee.createChannel({
+    id: CHAT_CHANNEL_ID,
+    name: 'Chat messages',
+    importance: AndroidImportance.HIGH,
+    sound: 'default',
+    vibration: true,
+  });
+}
+
 export async function requestNotificationPermission() {
   const settings = await notifee.requestPermission();
   return (
     settings.authorizationStatus === AuthorizationStatus.AUTHORIZED ||
     settings.authorizationStatus === AuthorizationStatus.PROVISIONAL
   );
+}
+
+export async function showChatNotification({ senderName, text, messageId, conversationId }) {
+  if (!(await requestNotificationPermission())) return false;
+
+  const channelId = await ensureChatChannel();
+  await notifee.displayNotification({
+    id: `chat-message-${String(messageId || Date.now())}`,
+    title: senderName || 'New chat message',
+    body: text || 'Sent an attachment',
+    data: {
+      conversationId: String(conversationId || ''),
+      messageId: String(messageId || ''),
+      screen: 'chat',
+    },
+    android: {
+      channelId,
+      smallIcon: 'ic_launcher',
+      pressAction: { id: 'default' },
+      color: '#6C4DF6',
+    },
+    ios: {
+      sound: 'default',
+      foregroundPresentationOptions: {
+        badge: true,
+        sound: true,
+        banner: true,
+        list: true,
+      },
+    },
+  });
+  return true;
 }
 
 async function createTaskReminder(task, channelId) {

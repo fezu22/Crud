@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
@@ -11,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useColorScheme } from 'nativewind';
 import { getChatMessages, sendChatMessage, uploadChatAttachment } from '../services/api';
 import { API_BASE_URL } from '../config/apiConfig';
 import ImageMessage from './chat/ImageMessage';
@@ -21,7 +23,11 @@ import { MicIcon } from './chat/ChatIcons';
 import ChatHeader from './chat/ChatHeader';
 import RealCallScreen from '../screens/chat/RealCallScreen';
 import { createCallSocket } from '../services/callService';
-import { chatTheme } from '../theme/chatTheme';
+import { getChatTheme } from '../theme/chatTheme';
+import {
+  loadCachedMessages,
+  saveCachedMessages,
+} from '../storage/chatStorage';
 
 function idOf(value) {
   if (!value) return '';
@@ -42,21 +48,49 @@ function normalizeMessage(message) {
 }
 
 export default function ChatThread({ person, user, token, onBack, onError }) {
+  const { colorScheme } = useColorScheme();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [themeTransitioning, setThemeTransitioning] = useState(false);
+  const transitionOpacity = useRef(new Animated.Value(0)).current;
   const [online, setOnline] = useState(Boolean(person.online));
   const [recordingOpen, setRecordingOpen] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
   const [incomingCall, setIncomingCall] = useState(null);
   const callSocketRef = useRef(null);
+  const didMountRef = useRef(false);
   const currentUserId = user?.id || user?._id;
+  const contactId = person?.id || person?._id;
+  const conversationId = [currentUserId, contactId].map(String).sort().join('_');
+  const chatTheme = useMemo(() => getChatTheme(colorScheme), [colorScheme]);
+
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    setThemeTransitioning(true);
+    transitionOpacity.setValue(0);
+    Animated.timing(transitionOpacity, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      Animated.timing(transitionOpacity, {
+        toValue: 0,
+        duration: 220,
+        delay: 80,
+        useNativeDriver: true,
+      }).start(() => setThemeTransitioning(false));
+    });
+  }, [chatTheme.background, transitionOpacity]);
 
   const refresh = async () => {
     try {
       const data = await getChatMessages(person.id, token);
       setMessages((data.messages || []).map(normalizeMessage));
-      setOnline(Boolean(data.user.online));
+      setOnline(Boolean(data.user?.online));
     } catch (error) {
       onError(error);
     } finally {
@@ -64,13 +98,31 @@ export default function ChatThread({ person, user, token, onBack, onError }) {
     }
   };
 
-  // Refresh on a short interval so the admin thread receives new messages.
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 5000);
-    return () => clearInterval(id);
+    let mounted = true;
+
+    loadCachedMessages(conversationId).then(cached => {
+      if (mounted && cached.length) {
+        setMessages(cached);
+        setLoading(false);
+      }
+    });
+
+    refresh().finally(() => {
+      if (mounted) setLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [person.id, token]);
+  }, [conversationId, token]);
+
+  useEffect(() => {
+    if (conversationId && messages.length) {
+      saveCachedMessages(conversationId, messages);
+    }
+  }, [conversationId, messages]);
 
   useEffect(() => {
     if (!token || !currentUserId) {
@@ -200,7 +252,18 @@ export default function ChatThread({ person, user, token, onBack, onError }) {
         onVoiceCall={() => setActiveCall({ type: 'voice', contact: person })}
         onVideoCall={() => setActiveCall({ type: 'video', contact: person })}
       />
-      {loading ? <ActivityIndicator className="mt-8" color="#6750E8" /> : (
+      {loading ? (
+        <View className="flex-1 px-5 pt-5">
+          <View className="mb-4 h-14 w-32 rounded-2xl bg-surface" />
+          <View className="mb-3 ml-auto h-20 w-[74%] rounded-2xl bg-brand/90" />
+          <View className="mb-3 h-16 w-[68%] rounded-2xl bg-surface" />
+          <View className="mb-3 ml-auto h-16 w-[56%] rounded-2xl bg-brand/80" />
+          <View className="mt-2 flex-row items-center">
+            <ActivityIndicator color={chatTheme.primaryLight} />
+            <Text className="ml-3 text-sm font-semibold text-muted">Loading messages...</Text>
+          </View>
+        </View>
+      ) : (
         <FlatList
           className="flex-1 px-5"
           data={messages}
@@ -276,6 +339,24 @@ export default function ChatThread({ person, user, token, onBack, onError }) {
           </View>
         </View>
       </Modal>
+
+      {themeTransitioning ? (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            opacity: transitionOpacity,
+            backgroundColor: colorScheme === 'light' ? 'rgba(255,255,255,0.72)' : 'rgba(16,14,22,0.72)',
+          }}
+          className="absolute inset-0"
+        >
+          <View className="flex-1 px-5 pt-6">
+            <View className="mb-4 h-5 w-28 rounded-full bg-white/40" />
+            <View className="mb-3 h-16 w-[78%] rounded-3xl bg-white/25" />
+            <View className="mb-3 ml-auto h-14 w-[66%] rounded-3xl bg-white/20" />
+            <View className="mb-3 h-16 w-[72%] rounded-3xl bg-white/18" />
+          </View>
+        </Animated.View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }

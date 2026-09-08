@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, Modal, NativeModules, PermissionsAndroid, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MicIcon } from './ChatIcons';
 import { formatDuration } from './VoiceMessageBubble';
-import Sound from 'react-native-nitro-sound';
+import Sound, { AudioSourceAndroidType } from 'react-native-nitro-sound';
 
 const MAX_SECONDS = 120;
 const BAR_COUNT = 30;
+const { BluetoothAudioRoute } = NativeModules;
 
 function emptyWaveform() {
   return Array.from({ length: BAR_COUNT }, () => 0.12);
@@ -52,6 +53,19 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, o
 
     const startRecording = async () => {
       try {
+        if (Platform.OS === 'android' && Platform.Version >= 31) {
+          const bluetoothPermission = PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT;
+          if ((await PermissionsAndroid.check(bluetoothPermission)) === false) {
+            await PermissionsAndroid.request(bluetoothPermission, {
+              title: 'Bluetooth audio permission',
+              message: 'Medi uses connected earbuds for voice messages when available.',
+              buttonPositive: 'Allow',
+              buttonNegative: 'Skip',
+            });
+          }
+        }
+
+        await BluetoothAudioRoute?.start?.();
         Sound.setSubscriptionDuration(0.08);
         Sound.addRecordBackListener(recording => {
           if (!mounted) return;
@@ -62,16 +76,21 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, o
           }));
         });
 
-        // Conservative mono settings avoid MediaRecorder prepare failures on
-        // devices that do not support the library's high-quality defaults.
+        // Use the platform voice-processing path to reduce echo and steady
+        // background noise while keeping the recording mono and lightweight.
+        const audioSet = {
+          AudioSamplingRate: 44100,
+          AudioEncodingBitRate: 128000,
+          AudioChannels: 1,
+          ...(Platform.OS === 'android'
+            ? { AudioSourceAndroid: AudioSourceAndroidType.VOICE_COMMUNICATION }
+            : { AVModeIOS: 'voiceChat' }),
+        };
+
         const path = await Promise.race([
           Sound.startRecorder(
             undefined,
-            {
-              AudioSamplingRate: 44100,
-              AudioEncodingBitRate: 128000,
-              AudioChannels: 1,
-            },
+            audioSet,
             true,
           ),
           new Promise((_, reject) => {
@@ -117,6 +136,7 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, o
       mounted = false;
       Sound.removeRecordBackListener();
       Sound.stopRecorder().catch(() => {});
+      BluetoothAudioRoute?.stop?.();
     };
   }, [visible]);
 

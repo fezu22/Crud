@@ -108,8 +108,14 @@ io.use(async (socket, next) => {
 /*
   Real-time call signaling events
 */
+const activeSockets = new Map();
+
 io.on('connection', socket => {
   const userId = String(socket.user._id);
+
+  activeSockets.set(userId, (activeSockets.get(userId) || 0) + 1);
+  User.updateOne({ _id: socket.user._id }, { lastActiveAt: new Date() }).catch(() => {});
+  io.emit('presence:update', { userId, online: true });
 
   socket.join(`user:${userId}`);
 
@@ -171,6 +177,14 @@ io.on('connection', socket => {
   });
 
   socket.on('disconnect', () => {
+    const remaining = (activeSockets.get(userId) || 1) - 1;
+    if (remaining > 0) {
+      activeSockets.set(userId, remaining);
+    } else {
+      activeSockets.delete(userId);
+      User.updateOne({ _id: socket.user._id }, { lastActiveAt: null }).catch(() => {});
+      io.emit('presence:update', { userId, online: false });
+    }
     console.log(`Call socket disconnected: ${socket.user.email || userId}`);
   });
 });

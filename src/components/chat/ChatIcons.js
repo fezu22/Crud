@@ -278,28 +278,31 @@ export function DocumentIcon({ color, size = 22 }) {
       style={{
         width: size * 0.78,
         height: size,
-        borderRadius: size * 0.1,
+        borderRadius: size * 0.12,
         backgroundColor: color,
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        paddingBottom: size * 0.14,
+        overflow: 'hidden',
       }}
     >
       <View
         style={{
-          width: size * 0.44,
-          height: size * 0.08,
-          borderRadius: 99,
-          backgroundColor: 'rgba(255,255,255,0.55)',
-          marginBottom: size * 0.05,
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: size * 0.28,
+          height: size * 0.28,
+          backgroundColor: 'rgba(0,0,0,0.12)',
+          borderBottomLeftRadius: size * 0.08,
         }}
       />
       <View
         style={{
-          width: size * 0.44,
+          position: 'absolute',
+          left: size * 0.18,
+          right: size * 0.18,
+          bottom: size * 0.2,
           height: size * 0.08,
           borderRadius: 99,
-          backgroundColor: 'rgba(255,255,255,0.35)',
+          backgroundColor: 'rgba(0,0,0,0.13)',
         }}
       />
     </View>

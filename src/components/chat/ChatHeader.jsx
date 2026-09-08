@@ -23,7 +23,7 @@ export default function ChatHeader({ theme, contact, onBack, onVoiceCall, onVide
           {contact.name}
         </Text>
         <View style={styles.statusRow}>
-          <View style={[styles.statusDot, { backgroundColor: theme.offlineDot }]} />
+          <View style={[styles.statusDot, { backgroundColor: contact.online ? theme.onlineDot : theme.offlineDot }]} />
           <Text style={[styles.statusText, { color: theme.muted }]}>
             {contact.online ? 'Online' : 'Offline'}
           </Text>

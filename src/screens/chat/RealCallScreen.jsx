@@ -30,7 +30,7 @@ import {
     PhoneIcon,
 } from '../../components/chat/ChatIcons';
 
-import { chatTheme } from '../../theme/chatTheme';
+import { getChatTheme } from '../../theme/chatTheme';
 import { formatDuration } from '../../components/chat/VoiceMessageBubble';
 import {
     createCallSocket,
@@ -83,8 +83,9 @@ export default function RealCallScreen({
     callType = 'voice',
     incomingCall,
     onEnd,
+    themeMode = 'dark',
 }) {
-    const theme = chatTheme;
+    const theme = getChatTheme(themeMode);
 
     const [status, setStatus] = useState(
         incomingCall ? 'connecting' : 'calling',
@@ -162,7 +163,12 @@ export default function RealCallScreen({
 
                 const stream =
                     await mediaDevices.getUserMedia({
-                        audio: true,
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                            channelCount: 1,
+                        },
                       video:
   callType === 'video'
     ? {
@@ -273,15 +279,15 @@ if (peer.addEventListener) {
 
                 socket.on('call:unavailable', () => {
                     if (mounted) {
-                        setError(
-                            'This user is offline or unavailable.',
-                        );
+                        setError('This user is offline or unavailable.');
+                        finishCall(false);
                     }
                 });
 
                 socket.on('call:rejected', () => {
                     if (mounted) {
                         setError('Call declined.');
+                        finishCall(false);
                     }
                 });
 
@@ -484,9 +490,9 @@ if (peer.addEventListener) {
                 : 'Connecting…';
 
     return (
-        <View style={styles.screen}>
+        <View style={[styles.screen, { backgroundColor: theme.background }]}>
             <StatusBar
-                barStyle="light-content"
+                barStyle={theme.barStyle}
                 backgroundColor={theme.background}
             />
 
@@ -499,14 +505,14 @@ if (peer.addEventListener) {
                     zOrder={0}
                 />
             ) : ( 
-                <View style={styles.voiceBackground} />
+                <View style={[styles.voiceBackground, { backgroundColor: theme.background }]} />
             )}
 
             {callType === 'video' &&
                 localStream ? (
                 <RTCView
                     streamURL={localStream.toURL()}
-                    style={styles.localVideo}
+                    style={[styles.localVideo, { backgroundColor: theme.surfaceAlt }]}
                     objectFit="cover"
                     mirror
                     zOrder={1}
@@ -515,18 +521,19 @@ if (peer.addEventListener) {
 
             <View style={styles.identity}>
                 {!remoteStream ? (
-                    <View style={styles.avatar}>
+                    <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
                         <Text style={styles.avatarText}>
                             {getInitials(name)}
                         </Text>
                     </View>
                 ) : null}
 
-                <Text style={styles.name}>{name}</Text>
+                <Text style={[styles.name, { color: theme.ink }]}>{name}</Text>
 
                 <Text
                     style={[
                         styles.status,
+                        { color: theme.muted },
                         error ? styles.error : null,
                     ]}>
                     {statusText}
@@ -534,7 +541,7 @@ if (peer.addEventListener) {
 
                 {status !== 'connected' && !error ? (
                     <ActivityIndicator
-                        color="#FFFFFF"
+                        color={theme.primary}
                         style={styles.loader}
                     />
                 ) : null}
@@ -544,17 +551,19 @@ if (peer.addEventListener) {
                 <View style={styles.controlGroup}>
                     <CallButton
                         active={muted}
+                        activeColor={theme.surface}
+                        inactiveColor={theme.surfaceAlt}
                         onPress={toggleMute}
                         accessibilityLabel="Mute">
                         <MicIcon
                             color={
-                                muted ? '#6C4DF6' : '#FFFFFF'
+                                muted ? theme.primary : theme.ink
                             }
                             size={22}
                         />
                     </CallButton>
 
-                    <CallLabel>
+                    <CallLabel color={theme.muted}>
                         {muted ? 'Unmute' : 'Mute'}
                     </CallLabel>
                 </View>
@@ -563,19 +572,21 @@ if (peer.addEventListener) {
                     <View style={styles.controlGroup}>
                         <CallButton
                             active={!cameraOn}
+                            activeColor={theme.surface}
+                            inactiveColor={theme.surfaceAlt}
                             onPress={toggleCamera}
                             accessibilityLabel="Camera">
                             <CameraIcon
                                 color={
                                     !cameraOn
-                                        ? '#6C4DF6'
-                                        : '#FFFFFF'
+                                        ? theme.primary
+                                        : theme.ink
                                 }
                                 size={22}
                             />
                         </CallButton>
 
-                        <CallLabel>
+                        <CallLabel color={theme.muted}>
                             {cameraOn
                                 ? 'Camera on'
                                 : 'Camera off'}
@@ -586,13 +597,14 @@ if (peer.addEventListener) {
                 <View style={styles.controlGroup}>
                     <CallButton
                         accessibilityLabel="Speaker"
+                        inactiveColor={theme.surfaceAlt}
                         onPress={() => { }}>
-                        <Text style={styles.speaker}>
+                        <Text style={[styles.speaker, { color: theme.ink }]}>
                             ◉
                         </Text>
                     </CallButton>
 
-                    <CallLabel>Speaker</CallLabel>
+                    <CallLabel color={theme.muted}>Speaker</CallLabel>
                 </View>
             </View>
 
@@ -620,11 +632,9 @@ const styles = StyleSheet.create({
     screen: {
         flex: 1,
         overflow: 'hidden',
-        backgroundColor: '#100E16',
     },
     voiceBackground: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: '#100E16',
     },
     remoteVideo: {
         ...StyleSheet.absoluteFillObject,
@@ -638,7 +648,6 @@ const styles = StyleSheet.create({
         height: 164,
         borderRadius: 18,
         overflow: 'hidden',
-        backgroundColor: '#211F2B',
     },
     identity: {
         flex: 1,
@@ -652,7 +661,6 @@ const styles = StyleSheet.create({
         borderRadius: 59,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#6C4DF6',
         marginBottom: 18,
     },
     avatarText: {
@@ -661,12 +669,10 @@ const styles = StyleSheet.create({
         fontWeight: '900',
     },
     name: {
-        color: '#FFFFFF',
         fontSize: 24,
         fontWeight: '900',
     },
     status: {
-        color: 'rgba(255,255,255,0.8)',
         fontSize: 14,
         marginTop: 8,
         textAlign: 'center',
@@ -689,7 +695,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     speaker: {
-        color: '#FFFFFF',
         fontSize: 18,
         fontWeight: '900',
     },

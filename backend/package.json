@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
+    "delete:users": "node scripts/deleteAllUsers.js --confirm",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

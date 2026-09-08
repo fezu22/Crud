@@ -4,12 +4,21 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 /**
  * Round call-control button with an optional active highlight.
  */
-export default function CallButton({ children, onPress, active, activeColor, danger, size = 58, accessibilityLabel }) {
+export default function CallButton({
+  children,
+  onPress,
+  active,
+  activeColor,
+  inactiveColor,
+  danger,
+  size = 58,
+  accessibilityLabel,
+}) {
   const background = danger
     ? '#DC2626'
     : active
       ? activeColor || 'rgba(255,255,255,0.95)'
-      : 'rgba(255,255,255,0.14)';
+      : inactiveColor || 'rgba(255,255,255,0.14)';
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -23,8 +32,8 @@ export default function CallButton({ children, onPress, active, activeColor, dan
   );
 }
 
-export function CallLabel({ children, style }) {
-  return <Text style={[styles.label, style]}>{children}</Text>;
+export function CallLabel({ children, style, color }) {
+  return <Text style={[styles.label, color ? { color } : null, style]}>{children}</Text>;
 }
 
 const styles = StyleSheet.create({

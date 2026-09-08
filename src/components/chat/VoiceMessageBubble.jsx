@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import RNFS from 'react-native-fs';
 import Sound from 'react-native-nitro-sound';
 
 const BAR_COUNT = 30;
@@ -31,7 +33,8 @@ export function formatDuration(totalSeconds) {
  * Voice-message bubble with waveform, play/pause, duration and progress.
  */
 export default function VoiceMessageBubble({ message, mine, theme, token }) {
-  const duration = Math.max(1, Math.round(message.duration || 1));
+  const [detectedDuration, setDetectedDuration] = useState(Number(message.duration) || 0);
+  const duration = Math.max(0, Math.round(Number(message.duration) || detectedDuration || 0));
   const bars = useMemo(
     () =>
       message.waveform?.length
@@ -40,9 +43,42 @@ export default function VoiceMessageBubble({ message, mine, theme, token }) {
     [message._id, message.waveform, duration],
   );
   const [playing, setPlaying] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const waveformProgress = useRef(new Animated.Value(0)).current;
   const source = message.attachmentUrl || message.audioUrl || message.uri;
+  const cachedSourceRef = useRef(null);
+
+  const resolvePlaybackSource = async () => {
+    if (!source || !/^https?:\/\//i.test(source) || !token) return source;
+    if (cachedSourceRef.current) return cachedSourceRef.current;
+
+    const cacheKey = `@medi_chat_audio_${String(message._id || source)}`;
+    const cachedPath = await AsyncStorage.getItem(cacheKey).catch(() => null);
+    if (cachedPath && await RNFS.exists(cachedPath).catch(() => false)) {
+      cachedSourceRef.current = `file://${cachedPath}`;
+      return cachedSourceRef.current;
+    }
+
+    const extension = String(message.fileType || 'audio/m4a')
+      .split('/')[1]
+      .replace(/[^a-z0-9]/gi, '') || 'm4a';
+    const localPath = `${RNFS.CachesDirectoryPath}/chat-audio-${String(message._id || Date.now())}.${extension}`;
+    const result = await RNFS.downloadFile({
+      fromUrl: source,
+      toFile: localPath,
+      headers: { Authorization: `Bearer ${token}` },
+      background: false,
+    }).promise;
+    const stat = await RNFS.stat(localPath).catch(() => null);
+    if (result.statusCode < 200 || result.statusCode >= 300 || Number(stat?.size) <= 0) {
+      throw new Error('Voice message could not be downloaded.');
+    }
+
+    await AsyncStorage.setItem(cacheKey, localPath).catch(() => {});
+    cachedSourceRef.current = `file://${localPath}`;
+    return cachedSourceRef.current;
+  };
 
   useEffect(() => () => {
     Sound.removePlaybackEndListener?.();
@@ -84,43 +120,51 @@ export default function VoiceMessageBubble({ message, mine, theme, token }) {
     }
 
     if (!source) return;
-    if (elapsed >= duration) setElapsed(0);
+    if (duration > 0 && elapsed >= duration) setElapsed(0);
 
     try {
+      setPreparing(true);
+      const playbackSource = await resolvePlaybackSource();
       Sound.addPlayBackListener(progressEvent => {
+        const nextDuration = Number(progressEvent.duration || 0) / 1000;
+        if (nextDuration > 0) setDetectedDuration(nextDuration);
         const nextSeconds = Math.min(
-          duration,
+          duration || nextDuration || Number.MAX_SAFE_INTEGER,
           Number(progressEvent.currentPosition || 0) / 1000,
         );
         setElapsed(nextSeconds);
       });
       Sound.addPlaybackEndListener(() => {
         Sound.removePlayBackListener?.();
-        setElapsed(duration);
+        setElapsed(duration || detectedDuration);
         setPlaying(false);
       });
       await Sound.startPlayer(
-        source,
-        token ? { Authorization: `Bearer ${token}` } : undefined,
+        playbackSource,
       );
       setPlaying(true);
     } catch {
       Sound.removePlayBackListener?.();
       setPlaying(false);
+    } finally {
+      setPreparing(false);
     }
   };
 
   const playedColor = mine ? '#C9BCFF' : theme.primary;
   const idleColor = mine ? 'rgba(255,255,255,0.45)' : theme.line;
-  const progress = elapsed / duration;
+  const progress = duration > 0 ? elapsed / duration : 0;
 
   return (
     <View style={styles.row}>
       <TouchableOpacity
         onPress={toggle}
+        disabled={preparing}
         style={[styles.playButton, { backgroundColor: mine ? 'rgba(255,255,255,0.18)' : theme.primary }]}
         accessibilityLabel={playing ? 'Pause voice message' : 'Play voice message'}>
-        {playing ? (
+        {preparing ? (
+          <ActivityIndicator color="#FFFFFF" size="small" />
+        ) : playing ? (
           <View style={styles.pauseBars}>
             <View style={[styles.pauseBar, { backgroundColor: '#FFFFFF' }]} />
             <View style={[styles.pauseBar, { backgroundColor: '#FFFFFF' }]} />

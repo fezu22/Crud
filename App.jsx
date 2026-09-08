@@ -5,12 +5,15 @@ import {
   Keyboard,
   LayoutAnimation,
   Platform,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   UIManager,
   View,
 } from 'react-native';
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+} from 'react-native-safe-area-context';
 import {
   AlertNotificationRoot,
   ALERT_TYPE,
@@ -40,6 +43,8 @@ import useTasks from './src/hooks/useTasks';
 import { appThemes } from './src/theme/appTheme';
 import {
   cancelTaskReminders,
+  requestNotificationPermission,
+  showChatNotification,
   syncTaskReminders,
 } from './src/services/notifications';
 import {
@@ -64,6 +69,7 @@ import {
   saveSession,
 } from './src/storage/sessionStorage';
 import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
+import { createCallSocket } from './src/services/callService';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -226,6 +232,7 @@ export default function App() {
   const profileUserId = getUserStorageId(user);
   const successTimeoutRef = useRef(null);
   const authGenerationRef = useRef(0);
+  const notificationPromptUserRef = useRef(null);
   const {
     tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
     formProject, savingTask, resetTasks, openTaskForm, closeTaskForm, saveTask,
@@ -282,6 +289,38 @@ export default function App() {
     const id = setInterval(() => pingActive(token).catch(() => {}), 15000);
     return () => clearInterval(id);
   }, [token]);
+  useEffect(() => {
+    if (!token || !user || !preferences.ready || !preferences.notifications) {
+      return undefined;
+    }
+
+    const userKey = getUserStorageId(user);
+    if (notificationPromptUserRef.current !== userKey) {
+      notificationPromptUserRef.current = userKey;
+      requestNotificationPermission().catch(error =>
+        console.warn('Could not request notification permission:', error),
+      );
+    }
+
+    const socket = createCallSocket(token);
+    const handleChatMessage = message => {
+      const senderId = message?.sender?._id || message?.sender?.id || message?.sender;
+      if (String(senderId) === String(getUserStorageId(user))) return;
+
+      showChatNotification({
+        senderName: message?.fromName || message?.senderName || 'New message',
+        text: message?.text || message?.caption || (message?.type === 'voice' ? 'Sent a voice message' : ''),
+        messageId: message?._id,
+        conversationId: message?.conversationId,
+      }).catch(error => console.warn('Could not show chat notification:', error));
+    };
+
+    socket.on('chat:message', handleChatMessage);
+    return () => {
+      socket.off('chat:message', handleChatMessage);
+      socket.disconnect();
+    };
+  }, [preferences.notifications, preferences.ready, token, user]);
   useEffect(() => () => {
     if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
   }, []);
@@ -524,29 +563,34 @@ export default function App() {
 
   if (bootLoading) {
     return (
-      <AlertNotificationRoot theme={preferences.theme}>
-        <StartupSkeleton theme={preferences.theme} />
-      </AlertNotificationRoot>
+      <SafeAreaProvider>
+        <AlertNotificationRoot theme={preferences.theme}>
+          <StartupSkeleton theme={preferences.theme} />
+        </AlertNotificationRoot>
+      </SafeAreaProvider>
     );
   }
 
   if (!token) {
     return (
-      <AlertNotificationRoot theme={preferences.theme}>
-        <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
-          <LoginScreen onLogin={login} onRegister={register} isLoading={authLoading} />
-          <ConfirmDialog config={confirm} onCancel={closeConfirm} />
-        </View>
-      </AlertNotificationRoot>
+      <SafeAreaProvider>
+        <AlertNotificationRoot theme={preferences.theme}>
+          <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
+            <LoginScreen onLogin={login} onRegister={register} isLoading={authLoading} />
+            <ConfirmDialog config={confirm} onCancel={closeConfirm} />
+          </View>
+        </AlertNotificationRoot>
+      </SafeAreaProvider>
     );
   }
 
   if (user?.role === 'admin') {
-    return <AlertNotificationRoot theme={preferences.theme}><View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} /><AdminDashboardScreen token={token} user={user} onLogout={logout} onError={error => showError('Chat error', error)} /><ConfirmDialog config={confirm} onCancel={closeConfirm} /></SafeAreaView></View></AlertNotificationRoot>;
+    return <SafeAreaProvider><AlertNotificationRoot theme={preferences.theme}><View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} /><AdminDashboardScreen token={token} user={user} themeMode={preferences.theme} onLogout={logout} onError={error => showError('Chat error', error)} /><ConfirmDialog config={confirm} onCancel={closeConfirm} /></SafeAreaView></View></AlertNotificationRoot></SafeAreaProvider>;
   }
 
   return (
-    <AlertNotificationRoot theme={preferences.theme}>
+    <SafeAreaProvider>
+      <AlertNotificationRoot theme={preferences.theme}>
       <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
         <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
           <StatusBar
@@ -582,7 +626,7 @@ export default function App() {
               onProfile={() => setActiveTab('profile')}
             />
           ) : activeTab === 'chat' ? (
-            <ChatScreen token={token} user={user} onError={error => showError('Chat error', error)} />
+            <ChatScreen token={token} user={user} themeMode={preferences.theme} onError={error => showError('Chat error', error)} />
           ) : activeTab === 'projects' ? (
             <ProjectsScreen
               projects={projects} tasks={tasks}
@@ -664,6 +708,7 @@ export default function App() {
           />
         )}
       </View>
-    </AlertNotificationRoot>
+      </AlertNotificationRoot>
+    </SafeAreaProvider>
   );
 }

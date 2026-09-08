@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import {
+  Animated,
   Dimensions,
   Modal,
   ScrollView,
@@ -8,13 +9,6 @@ import {
   View,
   StyleSheet,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
-
 import ModalHeader from '../../components/ModalHeader';
 import DraggableSuccessModal from '../../components/DraggableSuccessModal';
 import InfiniteCardSlider from '../../components/InfiniteCardSlider';
@@ -25,31 +19,52 @@ const ATTACHMENT_WIDTH = Dimensions.get('window').width - 48;
 //  REFINED ANIMATED BACK BUTTON
 // ==========================================
 const AnimatedBackButton = ({ onPress }) => {
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(0);
-  const translateX = useSharedValue(-30);
+  const scale = React.useRef(new Animated.Value(1)).current;
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateX = React.useRef(new Animated.Value(-30)).current;
 
   // Mount animation
   useEffect(() => {
-    opacity.value = withTiming(1, { duration: 400 });
-    translateX.value = withSpring(0, { damping: 12, stiffness: 90 });
-  }, []);
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateX, {
+        toValue: 0,
+        damping: 12,
+        stiffness: 90,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [opacity, translateX]);
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.92, { damping: 12, stiffness: 250 });
+    Animated.spring(scale, {
+      toValue: 0.92,
+      damping: 12,
+      stiffness: 250,
+      useNativeDriver: true,
+    }).start();
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 12, stiffness: 250 });
+    Animated.spring(scale, {
+      toValue: 1,
+      damping: 12,
+      stiffness: 250,
+      useNativeDriver: true,
+    }).start();
   };
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
+  const animatedStyle = {
+    opacity,
     transform: [
-      { translateX: translateX.value },
-      { scale: scale.value },
+      { translateX },
+      { scale },
     ],
-  }));
+  };
 
   return (
     <Animated.View style={[styles.btnWrapper, animatedStyle]}>
