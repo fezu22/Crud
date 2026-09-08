@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CheckIcon, DoubleCheckIcon } from './ChatIcons';
 
 export function formatClock(dateString) {
@@ -23,11 +23,26 @@ function StatusTicks({ status, theme, mine }) {
  * bubbles sit left in dark surfaces, both with clock time and delivery
  * ticks. `renderAttachment` plugs in image/document/voice content.
  */
-export default function MessageBubble({ message, theme, mine, renderAttachment }) {
+export default function MessageBubble({
+  message,
+  theme,
+  mine,
+  renderAttachment,
+  selected = false,
+  onLongPress,
+  selectionMode = false,
+  onSelect,
+}) {
   const outgoing = mine;
   return (
     <View style={[styles.row, { justifyContent: outgoing ? 'flex-end' : 'flex-start' }]}>
-      <View
+      {!outgoing && selectionMode ? (
+        <SelectionButton selected={selected} theme={theme} onPress={onSelect} />
+      ) : null}
+      <Pressable
+        onPress={selectionMode ? onSelect : undefined}
+        onLongPress={onLongPress}
+        delayLongPress={350}
         style={[
           styles.bubble,
           outgoing ? styles.bubbleOut : styles.bubbleIn,
@@ -35,11 +50,12 @@ export default function MessageBubble({ message, theme, mine, renderAttachment }
             backgroundColor: outgoing ? theme.outgoingBase : theme.incomingBubble,
           },
           outgoing ? null : { borderColor: theme.incomingBorder, borderWidth: 1 },
+          selected ? { borderColor: theme.primaryLight, borderWidth: 2 } : null,
         ]}>
         {outgoing ? (
           <View style={[styles.tint, { backgroundColor: theme.outgoingTop }]} />
         ) : null}
-        <View>
+        <View style={styles.content}>
           {renderAttachment ? renderAttachment(message) : null}
           {message.text ? (
             <Text
@@ -60,11 +76,42 @@ export default function MessageBubble({ message, theme, mine, renderAttachment }
               }}>
               {formatClock(message.createdAt)}
             </Text>
+            {message.editedAt ? (
+              <Text
+                style={{
+                  color: outgoing ? 'rgba(245, 243, 250, 0.75)' : theme.muted,
+                  fontSize: 10,
+                  fontWeight: '600',
+                }}>
+                edited
+              </Text>
+            ) : null}
             <StatusTicks status={message.status} theme={theme} mine={outgoing} />
           </View>
         </View>
-      </View>
+      </Pressable>
+      {outgoing && selectionMode ? (
+        <SelectionButton selected={selected} theme={theme} onPress={onSelect} />
+      ) : null}
     </View>
+  );
+}
+
+function SelectionButton({ selected, theme, onPress }) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected }}
+      onPress={onPress}
+      style={[
+        styles.selectionButton,
+        {
+          borderColor: selected ? theme.primary : theme.line,
+          backgroundColor: selected ? theme.primary : 'transparent',
+        },
+      ]}>
+      {selected ? <Text style={styles.selectionMark}>x</Text> : null}
+    </Pressable>
   );
 }
 
@@ -88,6 +135,10 @@ const styles = StyleSheet.create({
   bubbleIn: {
     borderBottomLeftRadius: 6,
   },
+  content: {
+    minWidth: 0,
+    maxWidth: '100%',
+  },
   tint: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.22,
@@ -99,5 +150,20 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     marginTop: 4,
     gap: 4,
+  },
+  selectionButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginHorizontal: 8,
+  },
+  selectionMark: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });

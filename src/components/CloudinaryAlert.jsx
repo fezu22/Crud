@@ -56,10 +56,10 @@ export default function CloudinaryAlert({ visible, onConfirm, onCancel }) {
               <Text className="text-4xl">☁</Text>
             </View>
             <Text className="mt-5 text-2xl font-black text-[#211A39] dark:text-white">
-              Connect your cloud
+              Cloud storage login required
             </Text>
             <Text className="mt-2 text-sm leading-5 text-[#675F7A] dark:text-[#D0C8E2]">
-              Add your Cloudinary details once to save task photos safely and access them from every device.
+              Cloud storage login is required to upload images.
             </Text>
           </View>
 
@@ -67,7 +67,7 @@ export default function CloudinaryAlert({ visible, onConfirm, onCancel }) {
             <View className="mb-5 flex-row items-center rounded-2xl bg-surface px-4 py-3 dark:bg-[#2A2734]">
               <Text className="mr-3 text-xl text-brand">✓</Text>
               <Text className="flex-1 text-xs leading-5 text-muted dark:text-[#B4AEC1]">
-                Free Cloudinary storage works with this app. Your task will remain open while you connect it.
+                Your task draft will stay here while you connect cloud storage.
               </Text>
             </View>
             <TouchableOpacity
@@ -76,7 +76,7 @@ export default function CloudinaryAlert({ visible, onConfirm, onCancel }) {
               accessibilityRole="button"
               accessibilityLabel="Connect cloud storage"
             >
-              <Text className="text-base font-black text-white">Connect cloud storage</Text>
+              <Text className="text-base font-black text-white">Login to cloud storage</Text>
             </TouchableOpacity>
             <TouchableOpacity
               className="mt-4 h-12 items-center justify-center rounded-2xl"
@@ -84,7 +84,7 @@ export default function CloudinaryAlert({ visible, onConfirm, onCancel }) {
               accessibilityRole="button"
               accessibilityLabel="Not now"
             >
-              <Text className="font-extrabold text-muted dark:text-[#B4AEC1]">Not now</Text>
+              <Text className="font-extrabold text-muted dark:text-[#B4AEC1]">Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>

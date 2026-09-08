@@ -14,9 +14,27 @@ const ChatMessageSchema = new mongoose.Schema(
       required: true,
     },
 
+    receiver: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+
+    conversationId: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
     type: {
       type: String,
       enum: ['text', 'image', 'video', 'document', 'voice'],
+      default: 'text',
+    },
+
+    messageType: {
+      type: String,
+      enum: ['text', 'image', 'video', 'audio', 'document'],
       default: 'text',
     },
 
@@ -27,9 +45,19 @@ const ChatMessageSchema = new mongoose.Schema(
       default: '',
     },
 
+    editedAt: {
+      type: Date,
+      default: null,
+    },
+
     attachmentUrl: {
       type: String,
       default: '',
+    },
+
+    attachmentFileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
     },
 
     fileName: {
@@ -43,6 +71,31 @@ const ChatMessageSchema = new mongoose.Schema(
     },
 
     fileSize: {
+      type: Number,
+      default: 0,
+    },
+
+    attachmentName: {
+      type: String,
+      default: '',
+    },
+
+    attachmentMimeType: {
+      type: String,
+      default: '',
+    },
+
+    attachmentSize: {
+      type: Number,
+      default: 0,
+    },
+
+    mediaWidth: {
+      type: Number,
+      default: 0,
+    },
+
+    mediaHeight: {
       type: Number,
       default: 0,
     },
@@ -63,9 +116,20 @@ const ChatMessageSchema = new mongoose.Schema(
       default: [],
     },
 
+    deletedFor: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    }],
+
     read: {
       type: Boolean,
       default: false,
+    },
+
+    deliveryStatus: {
+      type: String,
+      enum: ['sent', 'delivered', 'read'],
+      default: 'sent',
     },
   },
   {
@@ -75,7 +139,8 @@ const ChatMessageSchema = new mongoose.Schema(
 
 ChatMessageSchema.index({
   sender: 1,
-  recipient: 1,
+  receiver: 1,
+  conversationId: 1,
   createdAt: 1,
 });
 

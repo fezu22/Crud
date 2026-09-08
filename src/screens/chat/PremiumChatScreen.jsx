@@ -35,10 +35,13 @@ import {
 } from '@react-native-documents/picker';
 
 import {
+  deleteChatMessages,
+  editChatMessage,
   getChatMessages,
   sendChatMessage,
   uploadChatAttachment,
 } from '../../services/api';
+import { API_BASE_URL } from '../../config/apiConfig';
 
 import {
   createCallSocket,
@@ -63,7 +66,7 @@ import {
 } from '../../components/chat/ChatIcons';
 
 import { chatTheme } from '../../theme/chatTheme';
-import { farazContact, makeId, nextReply } from './mockChatData';
+import { makeId } from './mockChatData';
 import RealCallScreen from './RealCallScreen';
 
 function sameDay(firstDate, secondDate) {
@@ -154,20 +157,22 @@ function isVideoAttachment(attachment) {
 function normalizeServerMessage(message, userId) {
   const isMine =
     String(idOf(message.sender)) === String(userId);
+  // GridFS files must use our API URL so the native media view can request
+  // them with the current auth token. Do not let a stale imageUrl win.
+  const attachmentUrl = message.attachmentFileId
+    ? `${API_BASE_URL}/chat/attachments/${String(message.attachmentFileId)}`
+    : message.attachmentUrl || message.imageUrl || '';
+  const rawType = message.type || message.messageType || 'text';
+  const type = rawType === 'audio' ? 'voice' : rawType;
 
   return {
     ...message,
-    _id: message._id || makeId(),
-    type: message.type || 'text',
+    _id: message._id ? String(message._id) : makeId(),
+    type,
     sender: isMine ? 'me' : 'them',
-    imageUrl:
-      message.imageUrl ||
-      message.attachmentUrl ||
-      '',
+    imageUrl: attachmentUrl,
     attachmentUrl:
-      message.attachmentUrl ||
-      message.imageUrl ||
-      '',
+      attachmentUrl,
     createdAt:
       message.createdAt ||
       new Date().toISOString(),
@@ -179,8 +184,65 @@ function normalizeServerMessage(message, userId) {
   };
 }
 
+function ChatSkeleton({ theme, contact }) {
+  const pulse = useRef(new Animated.Value(0.45)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.45, duration: 850, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  const block = style => (
+    <Animated.View style={[styles.skeletonBlock, style, { opacity: pulse }]} />
+  );
+
+  return (
+    <View style={[styles.fullPageLoading, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.barStyle} backgroundColor={theme.background} />
+      <ChatBackground theme={theme} />
+      <View style={styles.skeletonHeader}>
+        {block(styles.skeletonBack)}
+        <View style={styles.skeletonProfile}>
+          {block(styles.skeletonName)}
+          {block(styles.skeletonStatus)}
+        </View>
+        <View style={styles.skeletonHeaderActions}>
+          {block(styles.skeletonIcon)}
+          {block(styles.skeletonIcon)}
+        </View>
+      </View>
+      <View style={styles.skeletonMessages}>
+        <View style={styles.skeletonIncoming}>
+          {block(styles.skeletonImage)}
+          {block(styles.skeletonLineShort)}
+        </View>
+        <View style={styles.skeletonOutgoing}>
+          {block(styles.skeletonImage)}
+          {block(styles.skeletonLineMedium)}
+        </View>
+        <View style={styles.skeletonIncoming}>
+          {block(styles.skeletonLineLong)}
+          {block(styles.skeletonLineShort)}
+        </View>
+      </View>
+      <View style={styles.skeletonComposer}>
+        {block(styles.skeletonAttach)}
+        {block(styles.skeletonInput)}
+        {block(styles.skeletonAttach)}
+      </View>
+      <Text style={[styles.loadingText, { color: theme.muted }]}>Loading {contact?.name || 'chat'}...</Text>
+    </View>
+  );
+}
+
 export default function PremiumChatScreen({
-  contact = farazContact,
+  contact,
   token,
   user,
   onError,
@@ -188,12 +250,15 @@ export default function PremiumChatScreen({
 }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [showJump, setShowJump] = useState(false);
   const [attachmentOpen, setAttachmentOpen] =
     useState(false);
   const [pendingImage, setPendingImage] =
     useState(null);
+  const [, setUploadingAttachment] = useState(false);
+  const [, setUploadProgress] = useState(0);
+  const [, setUploadError] = useState('');
   const [viewingImage, setViewingImage] =
     useState(null);
   const [recordingOpen, setRecordingOpen] =
@@ -202,8 +267,9 @@ export default function PremiumChatScreen({
     useState(null);
   const [incomingCall, setIncomingCall] =
     useState(null);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const [editingMessage, setEditingMessage] = useState(null);
 
-  const replyCount = useRef(0);
   const statusTimers = useRef([]);
   const listRef = useRef(null);
   const nearBottom = useRef(true);
@@ -222,11 +288,17 @@ export default function PremiumChatScreen({
   const contactId =
     contact?.id || contact?._id;
 
+  const conversationId = [currentUserId, contactId]
+    .map(String)
+    .sort()
+    .join('_');
+
   const syncWithServer = Boolean(
     token &&
     currentUserId &&
     contactId &&
-    String(contactId) !== 'demo-faraz',
+    String(contactId) &&
+    String(contactId) !== String(currentUserId),
   );
 
   useEffect(() => {
@@ -252,6 +324,53 @@ export default function PremiumChatScreen({
       callSocketRef.current = null;
     };
   }, [currentUserId, token]);
+
+  useEffect(() => {
+    const socket = callSocketRef.current;
+    if (!socket || !syncWithServer) return undefined;
+
+    const onChatMessage = message => {
+      if (message.conversationId !== conversationId) return;
+
+      // The sender already has an optimistic bubble and replaces it with the
+      // upload response. Do not add the same server echo a second time.
+      if (String(idOf(message.sender)) === String(currentUserId)) return;
+
+      setMessages(current => {
+        const messageId = String(message._id || '');
+        if (current.some(item => String(item._id) === messageId)) return current;
+        return [...current, normalizeServerMessage(message, currentUserId)].sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+        );
+      });
+    };
+
+    const onChatMessageDeleted = event => {
+      if (event.conversationId !== conversationId) return;
+      setMessages(current => current.filter(item => String(item._id) !== String(event.messageId)));
+      setSelectedMessageIds(current => current.filter(id => String(id) !== String(event.messageId)));
+    };
+
+    const onChatMessageUpdated = message => {
+      if (message.conversationId !== conversationId) return;
+      setMessages(current => current.map(item => (
+        String(item._id) === String(message._id)
+          ? normalizeServerMessage(message, currentUserId)
+          : item
+      )));
+    };
+
+    socket.emit('chat:join', { conversationId });
+    socket.on('chat:message', onChatMessage);
+    socket.on('chat:message-deleted', onChatMessageDeleted);
+    socket.on('chat:message-updated', onChatMessageUpdated);
+    return () => {
+      socket.emit('chat:leave', { conversationId });
+      socket.off('chat:message', onChatMessage);
+      socket.off('chat:message-deleted', onChatMessageDeleted);
+      socket.off('chat:message-updated', onChatMessageUpdated);
+    };
+  }, [conversationId, currentUserId, syncWithServer]);
 
   useEffect(() => {
     onErrorRef.current = onError;
@@ -314,6 +433,7 @@ export default function PremiumChatScreen({
 
   useEffect(() => {
     if (!syncWithServer) {
+      setLoading(false);
       return undefined;
     }
 
@@ -450,28 +570,6 @@ export default function PremiumChatScreen({
     updateStatus(2400, 'read');
   };
 
-  const scheduleReply = () => {
-    const replyAt = replyCount.current;
-
-    replyCount.current += 1;
-
-    statusTimers.current.push(
-      setTimeout(() => {
-        appendMessages([
-          {
-            _id: makeId(),
-            type: 'text',
-            text: nextReply(replyAt),
-            sender: 'them',
-            createdAt:
-              new Date().toISOString(),
-            status: 'read',
-          },
-        ]);
-      }, 3200),
-    );
-  };
-
   const appendOutgoing = partial => {
     const message = {
       ...partial,
@@ -501,6 +599,61 @@ export default function PremiumChatScreen({
     );
   };
 
+  const toggleMessageSelection = messageId => {
+    setSelectedMessageIds(current =>
+      current.includes(messageId)
+        ? current.filter(id => id !== messageId)
+        : [...current, messageId],
+    );
+  };
+
+  const clearMessageSelection = () => setSelectedMessageIds([]);
+
+  const selectedMessage = selectedMessageIds.length === 1
+    ? messages.find(message => message._id === selectedMessageIds[0])
+    : null;
+  const canEditSelectedMessage = Boolean(
+    selectedMessage &&
+    (selectedMessage.type === 'text' || selectedMessage.messageType === 'text'),
+  );
+
+  const deleteSelectedMessages = async mode => {
+    const selected = messages.filter(message => selectedMessageIds.includes(message._id));
+    const deletable = selected;
+
+    if (!deletable.length) {
+      Alert.alert('Cannot delete', 'No message selected.');
+      return;
+    }
+
+    try {
+      const serverMessageIds = deletable
+        .filter(message => !String(message._id).startsWith('local-'))
+        .map(message => message._id);
+
+      if (serverMessageIds.length) {
+        await deleteChatMessages(contactId, serverMessageIds, token, mode);
+      }
+
+      setMessages(current => current.filter(message => !deletable.some(item => item._id === message._id)));
+      clearMessageSelection();
+    } catch (error) {
+      onErrorRef.current?.(error);
+    }
+  };
+
+  const startEditingMessage = () => {
+    if (selectedMessageIds.length !== 1) return;
+    const message = messages.find(item => item._id === selectedMessageIds[0]);
+    if (!message || (message.type !== 'text' && message.messageType !== 'text')) {
+      Alert.alert('Cannot edit', 'Only text messages can be edited.');
+      return;
+    }
+    setEditingMessage(message);
+    setText(message.text || '');
+    clearMessageSelection();
+  };
+
   const sendText = async () => {
     const value = text.trim();
 
@@ -512,6 +665,22 @@ export default function PremiumChatScreen({
 
     if (syncWithServer) {
       try {
+        if (editingMessage) {
+          const saved = await editChatMessage(
+            contactId,
+            editingMessage._id,
+            value,
+            token,
+          );
+          setMessages(current => current.map(message => (
+            String(message._id) === String(editingMessage._id)
+              ? normalizeServerMessage(saved, currentUserId)
+              : message
+          )));
+          setEditingMessage(null);
+          return;
+        }
+
         const saved = await sendChatMessage(
           contactId,
           value,
@@ -532,13 +701,7 @@ export default function PremiumChatScreen({
       return;
     }
 
-    appendOutgoing({
-      _id: makeId(),
-      type: 'text',
-      text: value,
-    });
-
-    scheduleReply();
+    onErrorRef.current?.(new Error('Select a real user before sending a message.'));
   };
 
   const handlePickerResponse = response => {
@@ -547,9 +710,12 @@ export default function PremiumChatScreen({
     if (asset?.uri) {
       setPendingImage({
         uri: asset.uri,
+        previewUri: asset.uri,
         fileName: asset.fileName,
         type: asset.type,
         size: asset.fileSize,
+        mediaWidth: asset.width,
+        mediaHeight: asset.height,
       });
 
       return;
@@ -629,7 +795,7 @@ export default function PremiumChatScreen({
 
       const documentMessage = appendOutgoing({
         _id: makeId(),
-        type: 'document',
+        type: file.type?.startsWith('audio/') ? 'audio' : 'document',
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
@@ -637,33 +803,26 @@ export default function PremiumChatScreen({
       });
 
       if (!syncWithServer) {
-        scheduleReply();
         return;
       }
 
       try {
-        const uploaded = await uploadChatAttachment(
+        setUploadingAttachment(true);
+        setUploadError('');
+        const saved = await uploadChatAttachment(
+          contactId,
           {
             uri: file.uri,
             type: file.type,
             fileName: file.name,
             size: file.size,
           },
-          {
-            cloudName: user?.cloudName,
-            uploadPreset: user?.uploadPreset,
-          },
-        );
-
-        const saved = await sendChatMessage(
-          contactId,
-          {
-            ...uploaded,
-            text: '',
-            type: 'document',
-            attachmentUrl: uploaded.attachmentUrl,
-          },
           token,
+          {
+            text: '',
+            type: file.type?.startsWith('audio/') ? 'audio' : 'document',
+          },
+          progress => setUploadProgress(progress),
         );
 
         replaceMessage(
@@ -675,7 +834,11 @@ export default function PremiumChatScreen({
         );
       } catch (error) {
         removeMessage(documentMessage._id);
+        setUploadError(error.message || 'Upload failed.');
         onErrorRef.current?.(error);
+      } finally {
+        setUploadingAttachment(false);
+        setUploadProgress(0);
       }
     } catch (error) {
       const message = String(
@@ -701,6 +864,7 @@ export default function PremiumChatScreen({
     }
 
     setPendingImage(null);
+    setUploadError('');
     const messageType = isVideoAttachment(attachment)
       ? 'video'
       : 'image';
@@ -708,38 +872,34 @@ export default function PremiumChatScreen({
     const optimisticMessage = appendOutgoing({
       _id: makeId(),
       type: messageType,
-      imageUrl: uri,
-      attachmentUrl: uri,
+      imageUrl: attachment.previewUri || uri,
+      attachmentUrl: attachment.previewUri || uri,
       caption: trimmedCaption,
       fileName: attachment.fileName,
       fileType: attachment.type,
       fileSize: attachment.size,
+      mediaWidth: attachment.mediaWidth,
+      mediaHeight: attachment.mediaHeight,
     });
 
     if (!syncWithServer) {
-      scheduleReply();
       return;
     }
 
     try {
-      const uploaded = await uploadChatAttachment(
-        attachment,
-        {
-          cloudName: user?.cloudName,
-          uploadPreset: user?.uploadPreset,
-        },
-      );
-
-      const saved = await sendChatMessage(
+      setUploadingAttachment(true);
+      const saved = await uploadChatAttachment(
         contactId,
+        attachment,
+        token,
         {
-          ...uploaded,
           text: '',
           type: messageType,
           caption: trimmedCaption,
-          attachmentUrl: uploaded.attachmentUrl,
+          mediaWidth: attachment.mediaWidth,
+          mediaHeight: attachment.mediaHeight,
         },
-        token,
+        progress => setUploadProgress(progress),
       );
 
       replaceMessage(
@@ -752,7 +912,11 @@ export default function PremiumChatScreen({
     } catch (error) {
       removeMessage(optimisticMessage._id);
       setPendingImage(attachment);
+      setUploadError(error.message || 'Upload failed.');
       onErrorRef.current?.(error);
+    } finally {
+      setUploadingAttachment(false);
+      setUploadProgress(0);
     }
   };
 
@@ -796,46 +960,51 @@ export default function PremiumChatScreen({
     setRecordingOpen(true);
   };
 
-  const sendVoiceMessage = secondsRecorded => {
+  const sendVoiceMessage = async (secondsRecorded, recording, recordedWaveform) => {
     setRecordingOpen(false);
 
     const voiceMessage = appendOutgoing({
       _id: makeId(),
       type: 'voice',
       duration: secondsRecorded,
-      waveform: seededWaveform(
-        `${Date.now()}`,
-      ),
+      waveform: recordedWaveform?.length
+        ? recordedWaveform
+        : seededWaveform(`${Date.now()}`),
     });
 
     if (!syncWithServer) {
-      scheduleReply();
       return;
     }
 
-    sendChatMessage(
-      contactId,
-      {
-        text: '',
-        type: 'voice',
-        duration: secondsRecorded,
-        waveform: voiceMessage.waveform,
-      },
-      token,
-    )
-      .then(saved => {
-        replaceMessage(
-          voiceMessage._id,
-          normalizeServerMessage(
-            saved,
-            currentUserId,
-          ),
-        );
-      })
-      .catch(error => {
-        removeMessage(voiceMessage._id);
-        onErrorRef.current?.(error);
-      });
+    if (!recording?.uri) {
+      removeMessage(voiceMessage._id);
+      onErrorRef.current?.(new Error('Voice recording is unavailable.'));
+      return;
+    }
+
+    try {
+      setUploadingAttachment(true);
+      const saved = await uploadChatAttachment(
+        contactId,
+        { ...recording, size: recording.size || 0 },
+        token,
+        {
+          text: '',
+          type: 'audio',
+          duration: secondsRecorded,
+          waveform: voiceMessage.waveform,
+        },
+        progress => setUploadProgress(progress),
+      );
+      replaceMessage(voiceMessage._id, normalizeServerMessage(saved, currentUserId));
+    } catch (error) {
+      removeMessage(voiceMessage._id);
+      setUploadError(error.message || 'Upload failed.');
+      onErrorRef.current?.(error);
+    } finally {
+      setUploadingAttachment(false);
+      setUploadProgress(0);
+    }
   };
 
   const renderAttachment = message => {
@@ -847,8 +1016,9 @@ export default function PremiumChatScreen({
         <ImageMessage
           message={message}
           theme={theme}
+          token={token}
           onPress={() =>
-            setViewingImage(message)
+            selectedMessageIds.length ? null : setViewingImage(message)
           }
         />
       );
@@ -867,12 +1037,17 @@ export default function PremiumChatScreen({
       );
     }
 
-    if (message.type === 'voice') {
+    if (
+      message.type === 'voice' ||
+      message.type === 'audio' ||
+      message.messageType === 'audio'
+    ) {
       return (
         <VoiceMessageBubble
           message={message}
           theme={theme}
           mine={message.sender === 'me'}
+          token={token}
         />
       );
     }
@@ -914,9 +1089,17 @@ export default function PremiumChatScreen({
           item.message.sender === 'me'
         }
         renderAttachment={renderAttachment}
+        selected={selectedMessageIds.includes(item.message._id)}
+        onLongPress={() => toggleMessageSelection(item.message._id)}
+        selectionMode={selectedMessageIds.length > 0}
+        onSelect={() => toggleMessageSelection(item.message._id)}
       />
     );
   };
+
+  if (loading) {
+    return <ChatSkeleton theme={theme} contact={contact} />;
+  }
 
   return (
     <KeyboardAvoidingView
@@ -938,21 +1121,37 @@ export default function PremiumChatScreen({
         }}>
         <ChatBackground theme={theme} />
 
-        <ChatHeader
-          theme={theme}
-          contact={contact}
-          onBack={onBack}
-          onVoiceCall={() =>
-            setActiveCall({
-              type: 'voice',
-            })
-          }
-          onVideoCall={() =>
-            setActiveCall({
-              type: 'video',
-            })
-          }
-        />
+        {selectedMessageIds.length ? (
+          <View style={[styles.selectionBar, { backgroundColor: theme.surface }]}>
+            <TouchableOpacity onPress={clearMessageSelection} accessibilityLabel="Cancel message selection">
+              <Text style={[styles.selectionAction, { color: theme.ink }]}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={[styles.selectionCount, { color: theme.ink }]}>
+              {selectedMessageIds.length} selected
+            </Text>
+            <View style={styles.deleteActions}>
+              {canEditSelectedMessage ? (
+                <TouchableOpacity onPress={startEditingMessage} accessibilityLabel="Edit selected message">
+                  <Text style={[styles.selectionAction, { color: theme.primary }]}>Edit</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity onPress={() => deleteSelectedMessages('me')} accessibilityLabel="Delete selected messages for me">
+                <Text style={[styles.selectionAction, { color: theme.ink }]}>Delete for me</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => deleteSelectedMessages('everyone')} accessibilityLabel="Delete selected messages for everyone">
+                <Text style={[styles.selectionAction, { color: theme.danger }]}>Delete for everyone</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <ChatHeader
+            theme={theme}
+            contact={contact}
+            onBack={onBack}
+            onVoiceCall={() => setActiveCall({ type: 'voice' })}
+            onVideoCall={() => setActiveCall({ type: 'video' })}
+          />
+        )}
 
         <FlatList
           ref={listRef}
@@ -1029,6 +1228,19 @@ export default function PremiumChatScreen({
                 theme.background,
             },
           ]}>
+          {editingMessage ? (
+            <View style={styles.editingBar}>
+              <Text style={[styles.editingText, { color: theme.primary }]}>Editing message</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setEditingMessage(null);
+                  setText('');
+                }}
+                accessibilityLabel="Cancel edit">
+                <Text style={[styles.editingCancel, { color: theme.muted }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           <TouchableOpacity
             style={styles.composerButton}
             onPress={() =>
@@ -1050,7 +1262,7 @@ export default function PremiumChatScreen({
                 color: theme.ink,
               },
             ]}
-            placeholder="Write a message..."
+            placeholder={editingMessage ? 'Edit message...' : 'Write a message...'}
             placeholderTextColor={theme.muted}
             value={text}
             onChangeText={setText}
@@ -1112,6 +1324,7 @@ export default function PremiumChatScreen({
           visible={Boolean(viewingImage)}
           image={viewingImage}
           theme={theme}
+          token={token}
           onClose={() =>
             setViewingImage(null)
           }
@@ -1124,6 +1337,7 @@ export default function PremiumChatScreen({
             setRecordingOpen(false)
           }
           onSend={sendVoiceMessage}
+          onError={onErrorRef.current}
         />
 
         <Modal
@@ -1230,6 +1444,181 @@ export default function PremiumChatScreen({
 }
 
 const styles = StyleSheet.create({
+  fullPageLoading: {
+    flex: 1,
+  },
+
+  loadingContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  loadingText: {
+    textAlign: 'center',
+    marginTop: 8,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  skeletonHeader: {
+    minHeight: 86,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2B273A',
+  },
+
+  skeletonBlock: {
+    backgroundColor: '#302B43',
+    borderRadius: 10,
+  },
+
+  skeletonBack: {
+    width: 52,
+    height: 18,
+  },
+
+  skeletonProfile: {
+    flex: 1,
+    marginLeft: 20,
+  },
+
+  skeletonName: {
+    width: 132,
+    height: 20,
+  },
+
+  skeletonStatus: {
+    width: 72,
+    height: 12,
+    marginTop: 8,
+  },
+
+  skeletonHeaderActions: {
+    flexDirection: 'row',
+    gap: 14,
+  },
+
+  skeletonIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+
+  skeletonMessages: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+
+  skeletonIncoming: {
+    alignSelf: 'flex-start',
+    marginVertical: 8,
+  },
+
+  skeletonOutgoing: {
+    alignSelf: 'flex-end',
+    marginVertical: 8,
+  },
+
+  skeletonImage: {
+    width: 232,
+    height: 150,
+    borderRadius: 16,
+  },
+
+  skeletonLineShort: {
+    width: 116,
+    height: 14,
+    marginTop: 8,
+  },
+
+  skeletonLineMedium: {
+    width: 170,
+    height: 14,
+    marginTop: 8,
+  },
+
+  skeletonLineLong: {
+    width: 210,
+    height: 14,
+  },
+
+  skeletonComposer: {
+    height: 88,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2B273A',
+  },
+
+  skeletonAttach: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+
+  skeletonInput: {
+    flex: 1,
+    height: 52,
+    borderRadius: 26,
+  },
+
+  selectionBar: {
+    minHeight: 72,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2B273A',
+  },
+
+  selectionAction: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+
+  selectionCount: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  editingBar: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#F1EEFF',
+  },
+
+  editingText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  editingCancel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  deleteActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+
   listContent: {
     paddingVertical: 14,
     flexGrow: 1,

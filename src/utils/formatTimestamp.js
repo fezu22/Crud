@@ -2,6 +2,8 @@ export default function formatTimestamp(dateString) {
   if (!dateString) return '';
 
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '';
+
   const elapsedMilliseconds = Date.now() - date.getTime();
   const elapsedMinutes = Math.floor(elapsedMilliseconds / 60000);
   const elapsedHours = Math.floor(elapsedMilliseconds / 3600000);

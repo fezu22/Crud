@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './global.css';
 import {
+  Animated,
   Keyboard,
   LayoutAnimation,
   Platform,
   SafeAreaView,
   StatusBar,
+  StyleSheet,
   UIManager,
   View,
 } from 'react-native';
@@ -81,12 +83,122 @@ function getUserStorageId(currentUser) {
   return currentUser?.id || currentUser?._id || currentUser?.email || currentUser?.phoneNumber;
 }
 
+const styles = StyleSheet.create({
+  startup: {
+    flex: 1,
+  },
+  startupHeader: {
+    height: 92,
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  startupLogo: {
+    width: 132,
+    height: 24,
+    borderRadius: 12,
+  },
+  startupAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
+  startupBody: {
+    flex: 1,
+    paddingHorizontal: 22,
+    paddingTop: 24,
+  },
+  startupEyebrow: {
+    width: 150,
+    height: 12,
+  },
+  startupTitle: {
+    width: 220,
+    height: 32,
+    marginTop: 12,
+  },
+  startupCards: {
+    marginTop: 34,
+    gap: 16,
+  },
+  startupCard: {
+    width: '100%',
+    height: 116,
+    borderRadius: 22,
+  },
+  startupNav: {
+    height: 82,
+    paddingHorizontal: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#2B2738',
+  },
+  startupNavItem: {
+    width: 42,
+    height: 12,
+    borderRadius: 6,
+  },
+  startupBlock: {
+    borderRadius: 10,
+  },
+});
+
+function StartupSkeleton({ theme }) {
+  const pulse = useRef(new Animated.Value(0.45)).current;
+  const dark = theme === 'dark';
+  const background = dark ? '#12111a' : '#f8f7fb';
+  const blockColor = dark ? '#2b2738' : '#e5e2eb';
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.45, duration: 850, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
+
+  const block = style => (
+    <Animated.View style={[styles.startupBlock, { backgroundColor: blockColor }, style, { opacity: pulse }]} />
+  );
+
+  return (
+    <View style={[styles.startup, { backgroundColor: background }]}>
+      <View style={styles.startupHeader}>
+        {block(styles.startupLogo)}
+        {block(styles.startupAvatar)}
+      </View>
+      <View style={styles.startupBody}>
+        {block(styles.startupEyebrow)}
+        {block(styles.startupTitle)}
+        <View style={styles.startupCards}>
+          {block(styles.startupCard)}
+          {block(styles.startupCard)}
+          {block(styles.startupCard)}
+        </View>
+      </View>
+      <View style={styles.startupNav}>
+        {block(styles.startupNavItem)}
+        {block(styles.startupNavItem)}
+        {block(styles.startupNavItem)}
+        {block(styles.startupNavItem)}
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   const preferences = usePreferences();
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [bootLoading, setBootLoading] = useState(true);
   const [media, setMedia] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -205,6 +317,10 @@ export default function App() {
       await saveSession(session.token, fresh.user);
     } catch (error) {
       console.warn('Failed to load session:', error);
+    } finally {
+      if (authGenerationRef.current === restoreGeneration) {
+        setBootLoading(false);
+      }
     }
   }
 
@@ -373,6 +489,7 @@ export default function App() {
       await saveSession(token, data.user);
       await loadWorkspace(token, data.user);
       setConnectCloudOpen(false);
+      openTaskForm(editingTask, formProject);
       showSuccess('Cloud storage connected!');
     } finally { setSavingCloud(false); }
   }
@@ -403,6 +520,14 @@ export default function App() {
     } finally {
       setSavingProject(false);
     }
+  }
+
+  if (bootLoading) {
+    return (
+      <AlertNotificationRoot theme={preferences.theme}>
+        <StartupSkeleton theme={preferences.theme} />
+      </AlertNotificationRoot>
+    );
   }
 
   if (!token) {
@@ -524,7 +649,11 @@ export default function App() {
           <CloudinaryAlert
             visible={cloudAlertOpen}
             onCancel={() => setCloudAlertOpen(false)}
-            onConfirm={() => { setCloudAlertOpen(false); setConnectCloudOpen(true); }}
+            onConfirm={() => {
+              setCloudAlertOpen(false);
+              closeTaskForm({ preserve: true });
+              setConnectCloudOpen(true);
+            }}
           />
         </SafeAreaView>
         {successModal.visible && successModal.host === 'screen' && (

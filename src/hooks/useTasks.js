@@ -34,10 +34,12 @@ export default function useTasks({
     [editingTaskId, tasks],
   );
 
-  function closeTaskForm() {
+  function closeTaskForm({ preserve = false } = {}) {
     setTaskFormOpen(false);
-    setEditingTaskId(null);
-    setFormProject(null);
+    if (!preserve) {
+      setEditingTaskId(null);
+      setFormProject(null);
+    }
   }
 
   function resetTasks() {

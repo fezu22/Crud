@@ -13,9 +13,15 @@ function getMetroHost() {
 }
 
 export function resolveApiHost() {
-  // With adb reverse, localhost on the device maps to the computer.
-  if (__DEV__ && Platform.OS === 'android') return LAN_FALLBACK_HOST;
-  return getMetroHost() || LAN_FALLBACK_HOST;
+  const metroHost = getMetroHost();
+
+  // Prefer the host that served the JS bundle so Wi-Fi devices can reach the
+  // local backend even when adb reverse is not available.
+  if (__DEV__ && Platform.OS === 'android') {
+    return metroHost || LAN_FALLBACK_HOST;
+  }
+
+  return metroHost || LAN_FALLBACK_HOST;
 }
 
 export const API_BASE_URL = __DEV__

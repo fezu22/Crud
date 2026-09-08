@@ -1,12 +1,281 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { getChatMessages, sendChatMessage } from '../services/api';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  PermissionsAndroid,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { getChatMessages, sendChatMessage, uploadChatAttachment } from '../services/api';
+import { API_BASE_URL } from '../config/apiConfig';
+import ImageMessage from './chat/ImageMessage';
+import DocumentBubble from './chat/DocumentBubble';
+import VoiceMessageBubble, { seededWaveform } from './chat/VoiceMessageBubble';
+import VoiceRecorderModal from './chat/VoiceRecorderModal';
+import { MicIcon } from './chat/ChatIcons';
+import ChatHeader from './chat/ChatHeader';
+import RealCallScreen from '../screens/chat/RealCallScreen';
+import { createCallSocket } from '../services/callService';
+import { chatTheme } from '../theme/chatTheme';
+
+function idOf(value) {
+  if (!value) return '';
+  return typeof value === 'object' ? value._id || value.id || '' : value;
+}
+
+function normalizeMessage(message) {
+  const attachmentUrl = message.attachmentFileId
+    ? `${API_BASE_URL}/chat/attachments/${String(message.attachmentFileId)}`
+    : message.attachmentUrl || message.imageUrl || '';
+  const rawType = message.type || message.messageType || 'text';
+  return {
+    ...message,
+    type: rawType === 'audio' ? 'voice' : rawType,
+    imageUrl: attachmentUrl,
+    attachmentUrl,
+  };
+}
 
 export default function ChatThread({ person, user, token, onBack, onError }) {
-  const [messages, setMessages] = useState([]); const [text, setText] = useState(''); const [loading, setLoading] = useState(true); const [online, setOnline] = useState(Boolean(person.online));
-  const refresh = async () => { try { const data = await getChatMessages(person.id, token); setMessages(data.messages); setOnline(Boolean(data.user.online)); } catch (e) { onError(e); } finally { setLoading(false); } };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { refresh(); const id = setInterval(refresh, 5000); return () => clearInterval(id); }, [person.id, token]);
-  async function submit() { const value = text.trim(); if (!value) return; setText(''); try { const message = await sendChatMessage(person.id, value, token); setMessages(items => [...items, message]); } catch (e) { setText(value); onError(e); } }
-  return <KeyboardAvoidingView className="flex-1 bg-canvas" behavior={Platform.OS === 'ios' ? 'padding' : undefined}><View className="flex-row items-center border-b border-line px-6 py-5"><TouchableOpacity onPress={onBack}><Text className="mr-4 text-2xl text-brand">Back</Text></TouchableOpacity><View><Text className="text-xl font-extrabold text-ink">{person.name}</Text><View className="flex-row items-center"><View className={`mr-1 h-2 w-2 rounded-full ${online ? 'bg-[#47B8A5]' : 'bg-gray-400'}`} /><Text className={online ? 'text-xs text-[#47B8A5]' : 'text-xs text-gray-400'}>{online ? 'Online' : 'Offline'}</Text></View></View></View>{loading ? <ActivityIndicator className="mt-8" color="#6750E8" /> : <FlatList className="flex-1 px-5" data={messages} keyExtractor={item => item._id} renderItem={({ item }) => <View className={`my-1 max-w-[82%] rounded-2xl px-4 py-3 ${String(item.sender) === String(user.id) ? 'self-end bg-brand' : 'self-start border border-line bg-surface'}`}><Text className={String(item.sender) === String(user.id) ? 'text-white' : 'text-ink'}>{item.text}</Text></View>} contentContainerStyle={{ paddingVertical: 16 }} />}<View className="flex-row items-center border-t border-line bg-canvas px-4 py-3"><TextInput className="mr-3 h-12 flex-1 rounded-2xl bg-surface px-4 text-ink" placeholder="Write a message..." placeholderTextColor="#817C94" value={text} onChangeText={setText} onSubmitEditing={submit} /><TouchableOpacity className="h-12 w-12 items-center justify-center rounded-2xl bg-brand" onPress={submit}><Text className="text-xl text-white">Send</Text></TouchableOpacity></View></KeyboardAvoidingView>;
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [online, setOnline] = useState(Boolean(person.online));
+  const [recordingOpen, setRecordingOpen] = useState(false);
+  const [activeCall, setActiveCall] = useState(null);
+  const [incomingCall, setIncomingCall] = useState(null);
+  const callSocketRef = useRef(null);
+  const currentUserId = user?.id || user?._id;
+
+  const refresh = async () => {
+    try {
+      const data = await getChatMessages(person.id, token);
+      setMessages((data.messages || []).map(normalizeMessage));
+      setOnline(Boolean(data.user.online));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Refresh on a short interval so the admin thread receives new messages.
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [person.id, token]);
+
+  useEffect(() => {
+    if (!token || !currentUserId) {
+      return undefined;
+    }
+
+    const socket = createCallSocket(token);
+    callSocketRef.current = socket;
+
+    socket.on('call:incoming', call => {
+      if (String(call.fromUserId) !== String(currentUserId)) {
+        setIncomingCall(call);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      callSocketRef.current = null;
+    };
+  }, [currentUserId, token]);
+
+  async function submit() {
+    const value = text.trim();
+    if (!value) return;
+    setText('');
+    try {
+      const message = await sendChatMessage(person.id, value, token);
+      setMessages(items => [...items, normalizeMessage(message)]);
+    } catch (error) {
+      setText(value);
+      onError(error);
+    }
+  }
+
+  async function startVoiceRecording() {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        {
+          title: 'Microphone permission',
+          message: 'Medi needs microphone access to record voice messages.',
+          buttonPositive: 'Allow',
+          buttonNegative: 'Cancel',
+        },
+      );
+
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        onError(new Error('Microphone permission is required for voice messages.'));
+        return;
+      }
+    }
+
+    setRecordingOpen(true);
+  }
+
+  async function sendVoiceMessage(secondsRecorded, recording, recordedWaveform) {
+    setRecordingOpen(false);
+
+    if (!recording?.uri) {
+      onError(new Error('Voice recording is unavailable.'));
+      return;
+    }
+
+    try {
+      await uploadChatAttachment(
+        person.id,
+        { ...recording, size: recording.size || 0 },
+        token,
+        {
+          text: '',
+          type: 'audio',
+          duration: secondsRecorded,
+          waveform: recordedWaveform?.length ? recordedWaveform : seededWaveform(`${Date.now()}`),
+        },
+      );
+      await refresh();
+    } catch (error) {
+      onError(error);
+    }
+  }
+
+  if (activeCall) {
+    return (
+      <RealCallScreen
+        contact={activeCall.contact}
+        token={token}
+        callType={activeCall.type}
+        incomingCall={activeCall.incomingCall}
+        onEnd={() => setActiveCall(null)}
+      />
+    );
+  }
+
+  const renderMessage = ({ item }) => {
+    const mine = String(idOf(item.sender)) === String(user.id);
+    const type = item.type || item.messageType;
+    const hasAttachment = type === 'image' || type === 'video';
+    return (
+      <View className={`my-1 max-w-[82%] rounded-2xl px-4 py-3 ${mine ? 'self-end bg-brand' : 'self-start border border-line bg-surface'}`}>
+        {hasAttachment ? <ImageMessage message={item} theme={chatTheme} token={token} /> : null}
+        {type === 'document' || type === 'pdf' ? (
+          <DocumentBubble
+            message={item}
+            theme={chatTheme}
+            mine={mine}
+          />
+        ) : null}
+        {type === 'voice' || type === 'audio' ? (
+          <VoiceMessageBubble
+            message={item}
+            theme={chatTheme}
+            mine={mine}
+            token={token}
+          />
+        ) : null}
+        {item.text ? <Text className={mine ? 'text-white' : 'text-ink'}>{item.text}</Text> : null}
+      </View>
+    );
+  };
+
+  return (
+    <KeyboardAvoidingView className="flex-1 bg-canvas" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ChatHeader
+        theme={chatTheme}
+        contact={{ ...person, online }}
+        onBack={onBack}
+        onVoiceCall={() => setActiveCall({ type: 'voice', contact: person })}
+        onVideoCall={() => setActiveCall({ type: 'video', contact: person })}
+      />
+      {loading ? <ActivityIndicator className="mt-8" color="#6750E8" /> : (
+        <FlatList
+          className="flex-1 px-5"
+          data={messages}
+          keyExtractor={(item, index) => String(item._id || index)}
+          renderItem={renderMessage}
+          contentContainerStyle={{ paddingVertical: 16 }}
+        />
+      )}
+      <View className="flex-row items-center border-t border-line bg-canvas px-4 py-3">
+        <TextInput className="mr-3 h-12 flex-1 rounded-2xl bg-surface px-4 text-ink" placeholder="Write a message..." placeholderTextColor="#817C94" value={text} onChangeText={setText} onSubmitEditing={submit} />
+        {text.trim() ? (
+          <TouchableOpacity className="h-12 w-12 items-center justify-center rounded-2xl bg-brand" onPress={submit} accessibilityLabel="Send message"><Text className="text-xl text-white">Send</Text></TouchableOpacity>
+        ) : (
+          <TouchableOpacity className="h-12 w-12 items-center justify-center rounded-2xl" onPress={startVoiceRecording} accessibilityLabel="Record voice message">
+            <MicIcon color={chatTheme.muted} size={20} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <VoiceRecorderModal
+        visible={recordingOpen}
+        theme={chatTheme}
+        onCancel={() => setRecordingOpen(false)}
+        onSend={sendVoiceMessage}
+        onError={onError}
+      />
+
+      <Modal visible={Boolean(incomingCall)} transparent animationType="fade" onRequestClose={() => setIncomingCall(null)}>
+        <View className="flex-1 items-center justify-center bg-black/70 px-6">
+          <View className="w-full rounded-3xl border border-line bg-canvas p-6">
+            <Text className="text-xs font-extrabold tracking-[1.4px] text-brand">
+              INCOMING {incomingCall?.callType === 'video' ? 'VIDEO' : 'VOICE'} CALL
+            </Text>
+            <Text className="mt-2 text-2xl font-extrabold text-ink">
+              {incomingCall?.fromName || person.name}
+            </Text>
+            <Text className="mt-2 text-sm text-muted">
+              Answer the real WebRTC call?
+            </Text>
+            <View className="mt-6 flex-row gap-3">
+              <TouchableOpacity
+                className="flex-1 items-center rounded-2xl bg-[#DC2626] py-3"
+                onPress={() => {
+                  callSocketRef.current?.emit('call:reject', {
+                    targetUserId: incomingCall?.fromUserId,
+                    callId: incomingCall?.callId,
+                    callType: incomingCall?.callType,
+                  });
+                  setIncomingCall(null);
+                }}>
+                <Text className="font-extrabold text-white">Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="flex-1 items-center rounded-2xl bg-[#47B8A5] py-3"
+                onPress={() => {
+                  const call = incomingCall;
+                  setIncomingCall(null);
+                  callSocketRef.current?.disconnect();
+                  setActiveCall({
+                    type: call.callType,
+                    incomingCall: call,
+                    contact: {
+                      ...person,
+                      id: call.fromUserId,
+                      name: call.fromName,
+                      online: true,
+                    },
+                  });
+                }}>
+                <Text className="font-extrabold text-white">Answer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </KeyboardAvoidingView>
+  );
 }

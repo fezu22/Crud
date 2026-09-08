@@ -31,6 +31,8 @@ const io = new Server(httpServer, {
   },
 });
 
+app.set('io', io);
+
 app.use(cors());
 app.use(express.json());
 
@@ -112,6 +114,19 @@ io.on('connection', socket => {
   socket.join(`user:${userId}`);
 
   console.log(`Call socket connected: ${socket.user.email || userId}`);
+
+  socket.on('chat:join', payload => {
+    const conversationId = String(payload?.conversationId || '');
+    const participants = conversationId.split('_');
+    if (participants.length === 2 && participants.includes(userId)) {
+      socket.join(`conversation:${conversationId}`);
+    }
+  });
+
+  socket.on('chat:leave', payload => {
+    const conversationId = String(payload?.conversationId || '');
+    socket.leave(`conversation:${conversationId}`);
+  });
 
   const forwardToUser = (eventName, payload = {}) => {
     const targetUserId = String(payload.targetUserId || '');

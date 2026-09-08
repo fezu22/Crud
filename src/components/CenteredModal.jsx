@@ -4,6 +4,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  View,
 } from 'react-native';
 
 /**
@@ -28,17 +29,18 @@ export default function CenteredModal({
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Pressable
-          className="flex-1 items-center justify-center bg-black/60 px-4 py-8"
-          onPress={onClose}
-        >
+        <View className="flex-1 items-center justify-center px-4 py-8">
           <Pressable
+            accessibilityRole="button"
+            className="absolute inset-0 bg-black/60"
+            onPress={onClose}
+          />
+          <View
             className={`max-h-[92%] w-full max-w-xl overflow-hidden rounded-[28px] border border-line bg-canvas ${cardClassName}`}
-            onPress={() => {}}
           >
             {children}
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );

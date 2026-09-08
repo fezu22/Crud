@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Sound from 'react-native-nitro-sound';
 
 const BAR_COUNT = 30;
 
@@ -28,10 +29,8 @@ export function formatDuration(totalSeconds) {
 
 /**
  * Voice-message bubble with waveform, play/pause, duration and progress.
- * Playback is simulated against the recorded duration: there is no audio
- * recorder backend wired up yet, so this stays stable on any device.
  */
-export default function VoiceMessageBubble({ message, mine, theme }) {
+export default function VoiceMessageBubble({ message, mine, theme, token }) {
   const duration = Math.max(1, Math.round(message.duration || 1));
   const bars = useMemo(
     () =>
@@ -42,36 +41,73 @@ export default function VoiceMessageBubble({ message, mine, theme }) {
   );
   const [playing, setPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef(null);
+  const waveformProgress = useRef(new Animated.Value(0)).current;
+  const source = message.attachmentUrl || message.audioUrl || message.uri;
 
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    },
-    [],
-  );
+  useEffect(() => () => {
+    Sound.removePlaybackEndListener?.();
+    Sound.removePlayBackListener?.();
+    Sound.stopPlayer().catch(() => {});
+  }, []);
 
-  const toggle = () => {
+  useEffect(() => {
+    if (!playing) {
+      waveformProgress.stopAnimation();
+      waveformProgress.setValue(0);
+      return undefined;
+    }
+
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(waveformProgress, {
+          toValue: 1,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+        Animated.timing(waveformProgress, {
+          toValue: 0,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [playing, waveformProgress]);
+
+  const toggle = async () => {
     if (playing) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+      await Sound.stopPlayer().catch(() => {});
+      Sound.removePlayBackListener?.();
       setPlaying(false);
       return;
     }
+
+    if (!source) return;
     if (elapsed >= duration) setElapsed(0);
-    setPlaying(true);
-    timerRef.current = setInterval(() => {
-      setElapsed(current => {
-        const next = current + 0.1;
-        if (next >= duration) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-          setPlaying(false);
-          return duration;
-        }
-        return next;
+
+    try {
+      Sound.addPlayBackListener(progressEvent => {
+        const nextSeconds = Math.min(
+          duration,
+          Number(progressEvent.currentPosition || 0) / 1000,
+        );
+        setElapsed(nextSeconds);
       });
-    }, 100);
+      Sound.addPlaybackEndListener(() => {
+        Sound.removePlayBackListener?.();
+        setElapsed(duration);
+        setPlaying(false);
+      });
+      await Sound.startPlayer(
+        source,
+        token ? { Authorization: `Bearer ${token}` } : undefined,
+      );
+      setPlaying(true);
+    } catch {
+      Sound.removePlayBackListener?.();
+      setPlaying(false);
+    }
   };
 
   const playedColor = mine ? '#C9BCFF' : theme.primary;
@@ -98,8 +134,12 @@ export default function VoiceMessageBubble({ message, mine, theme }) {
         <View style={[styles.wave, mine ? null : { opacity: 0.95 }]}>
           {bars.map((level, index) => {
             const played = index / bars.length <= progress;
+            const scale = waveformProgress.interpolate({
+              inputRange: [0, 0.5, 1],
+              outputRange: [0.72 + level * 0.18, 1.08, 0.72 + level * 0.18],
+            });
             return (
-              <View
+              <Animated.View
                 key={index}
                 style={{
                   width: 3,
@@ -107,6 +147,7 @@ export default function VoiceMessageBubble({ message, mine, theme }) {
                   marginRight: 2,
                   height: 6 + level * 20,
                   backgroundColor: played ? playedColor : idleColor,
+                  transform: [{ scaleY: playing ? scale : 1 }],
                 }}
               />
             );

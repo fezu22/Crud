@@ -1,4 +1,6 @@
 const express = require('express');
+const mongoose = require('mongoose');
+const multer = require('multer');
 const User = require('../models/User');
 const ChatMessage = require('../models/ChatMessage');
 const auth = require('../middleware/auth');
@@ -7,6 +9,15 @@ const {
 } = require('../utils/admin');
 
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024,
+  },
+});
+
+const conversationIdFor = (firstUserId, secondUserId) =>
+  [String(firstUserId), String(secondUserId)].sort().join('_');
 
 router.use(auth);
 
@@ -33,19 +44,23 @@ const previewText = message => {
     return message.caption;
   }
 
-  if (message.type === 'image') {
+  if (message.type === 'image' || message.messageType === 'image') {
     return '[Image]';
   }
 
-  if (message.type === 'video') {
+  if (message.type === 'video' || message.messageType === 'video') {
     return '[Video]';
   }
 
-  if (message.type === 'document') {
+  if (message.type === 'document' || message.messageType === 'document') {
     return message.fileName || '[Document]';
   }
 
-  if (message.type === 'voice') {
+  if (
+    message.type === 'voice' ||
+    message.type === 'audio' ||
+    message.messageType === 'audio'
+  ) {
     return '[Voice message]';
   }
 
@@ -77,6 +92,33 @@ const inferAttachmentType = body => {
 
   return 'document';
 };
+
+function getChatFilesBucket() {
+  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+    bucketName: 'chatAttachments',
+  });
+}
+
+function buildAttachmentUrl(req, fileId) {
+  return `${req.protocol}://${req.get('host')}/api/chat/attachments/${fileId}`;
+}
+
+function parseWaveform(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 router.get('/users', async (req, res) => {
   const q = String(
@@ -151,6 +193,7 @@ router.get(
             recipient: req.user._id,
           },
         ],
+        deletedFor: { $ne: req.user._id },
       })
         .sort({ createdAt: -1 })
         .lean();
@@ -282,6 +325,149 @@ router.get(
 );
 
 router.get(
+  '/attachments/:fileId',
+  async (req, res, next) => {
+    try {
+      const { fileId } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(fileId)) {
+        return res.status(404).json({
+          message: 'Attachment not found',
+        });
+      }
+
+      const _id = new mongoose.Types.ObjectId(fileId);
+      const bucket = getChatFilesBucket();
+      const file = await bucket.find({ _id }).next();
+
+      if (!file) {
+        return res.status(404).json({
+          message: 'Attachment not found',
+        });
+      }
+
+      const sender = file.metadata?.sender;
+      const receiver = file.metadata?.receiver;
+      const requester = String(req.user._id);
+
+      if (requester !== String(sender) && requester !== String(receiver)) {
+        return res.status(403).json({
+          message: 'You cannot view this attachment',
+        });
+      }
+
+      if (file.contentType) {
+        res.set('Content-Type', file.contentType);
+      }
+
+      res.set('Content-Length', String(file.length));
+      bucket.openDownloadStream(_id).on('error', next).pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.post(
+  '/:userId/attachments',
+  upload.single('file'),
+  async (req, res, next) => {
+    try {
+      const other = await User.findById(
+        req.params.userId,
+      ).select('_id');
+
+      if (!other || String(other._id) === String(req.user._id)) {
+        return res.status(404).json({
+          message: 'Chat recipient not found',
+        });
+      }
+
+      if (!req.file?.buffer?.length) {
+        return res.status(400).json({
+          message: 'Attachment file is required',
+        });
+      }
+
+      const conversationId = conversationIdFor(
+        req.user._id,
+        other._id,
+      );
+      const fileType = req.file.mimetype || '';
+      const fileName = req.file.originalname || 'attachment';
+      const fileSize = req.file.size || req.file.buffer.length;
+      let messageType = req.body.type || req.body.messageType || '';
+
+      if (!['image', 'video', 'audio', 'document'].includes(messageType)) {
+        messageType = inferAttachmentType({
+          attachmentUrl: '',
+          fileType,
+          fileName,
+        });
+      }
+
+      if (messageType === 'voice') {
+        messageType = 'audio';
+      }
+
+      const bucket = getChatFilesBucket();
+      const uploadStream = bucket.openUploadStream(fileName, {
+        contentType: fileType || 'application/octet-stream',
+        metadata: {
+          sender: req.user._id,
+          receiver: other._id,
+          conversationId,
+          messageType,
+        },
+      });
+
+      await new Promise((resolve, reject) => {
+        uploadStream.on('finish', resolve);
+        uploadStream.on('error', reject);
+        uploadStream.end(req.file.buffer);
+      });
+
+      const fileId = uploadStream.id;
+      const publicAttachmentUrl = buildAttachmentUrl(req, fileId);
+      const message = await ChatMessage.create({
+        sender: req.user._id,
+        recipient: other._id,
+        receiver: other._id,
+        conversationId,
+        type: messageType === 'audio' ? 'voice' : messageType,
+        messageType,
+        text: String(req.body.text || '').trim(),
+        attachmentUrl: publicAttachmentUrl,
+        attachmentFileId: fileId,
+        fileName,
+        fileType,
+        fileSize,
+        attachmentName: fileName,
+        attachmentMimeType: fileType,
+        attachmentSize: fileSize,
+        mediaWidth: Number(req.body.mediaWidth || 0),
+        mediaHeight: Number(req.body.mediaHeight || 0),
+        duration: Number(req.body.duration || 0),
+        caption: String(req.body.caption || ''),
+        waveform: parseWaveform(req.body.waveform)
+          .slice(0, 120)
+          .map(Number)
+          .filter(Number.isFinite),
+        deliveryStatus: 'sent',
+      });
+
+      const io = req.app.get('io');
+      io?.to(`conversation:${conversationId}`).emit('chat:message', message);
+      io?.to(`user:${String(other._id)}`).emit('chat:message', message);
+
+      return res.status(201).json(message);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.get(
   '/:userId',
   async (req, res) => {
     const other =
@@ -300,22 +486,21 @@ router.get(
         });
     }
 
-    const messages =
+    const conversationId = conversationIdFor(
+      req.user._id,
+      other._id,
+    );
+
+      const messages =
       await ChatMessage.find({
+        conversationId,
         $or: [
-          {
-            sender:
-              req.user._id,
-            recipient:
-              other._id,
-          },
-          {
-            sender:
-              other._id,
-            recipient:
-              req.user._id,
-          },
+          { sender: req.user._id, receiver: other._id },
+          { sender: other._id, receiver: req.user._id },
+          { sender: req.user._id, recipient: other._id },
+          { sender: other._id, recipient: req.user._id },
         ],
+        deletedFor: { $ne: req.user._id },
       })
         .sort({
           createdAt: 1,
@@ -326,12 +511,16 @@ router.get(
       {
         sender:
           other._id,
-        recipient:
-          req.user._id,
+        $or: [
+          { receiver: req.user._id },
+          { recipient: req.user._id },
+        ],
+        conversationId,
       },
       {
         $set: {
           read: true,
+          deliveryStatus: 'read',
         },
       },
     );
@@ -339,8 +528,182 @@ router.get(
     res.json({
       user:
         publicUser(other),
+      conversationId,
       messages,
     });
+  },
+);
+
+router.delete(
+  '/:userId/messages',
+  async (req, res, next) => {
+    try {
+      const messageIds = Array.isArray(req.body?.messageIds)
+        ? [...new Set(req.body.messageIds.map(String))]
+        : [];
+
+      if (!messageIds.length || messageIds.some(id => !mongoose.Types.ObjectId.isValid(id))) {
+        return res.status(400).json({ message: 'Valid message IDs are required' });
+      }
+
+      const other = await User.findById(req.params.userId).select('_id');
+      if (!other || String(other._id) === String(req.user._id)) {
+        return res.status(404).json({ message: 'Chat recipient not found' });
+      }
+
+      const conversationId = conversationIdFor(req.user._id, other._id);
+      const mode = req.body?.mode === 'me' ? 'me' : 'everyone';
+
+      if (mode === 'me') {
+        const messages = await ChatMessage.find({
+          _id: { $in: messageIds },
+          conversationId,
+          $or: [
+            { sender: req.user._id },
+            { recipient: req.user._id },
+          ],
+        }).select('_id');
+        const hiddenIds = messages.map(message => String(message._id));
+        await ChatMessage.updateMany(
+          { _id: { $in: hiddenIds } },
+          { $addToSet: { deletedFor: req.user._id } },
+        );
+        req.app.get('io')?.to(`user:${String(req.user._id)}`).emit('chat:messages-hidden', {
+          conversationId,
+          messageIds: hiddenIds,
+        });
+        return res.json({ message: 'Messages deleted for you', deletedIds: hiddenIds });
+      }
+
+      const messages = await ChatMessage.find({
+        _id: { $in: messageIds },
+        conversationId,
+        $or: [
+          { sender: req.user._id },
+          { sender: other._id },
+        ],
+      }).select('_id attachmentFileId');
+
+      const bucket = getChatFilesBucket();
+      await Promise.all(messages.map(async message => {
+        if (!message.attachmentFileId) return;
+        try {
+          await bucket.delete(message.attachmentFileId);
+        } catch (error) {
+          if (error.codeName !== 'NamespaceNotFound') throw error;
+        }
+      }));
+
+      const deletedIds = messages.map(message => String(message._id));
+      await ChatMessage.deleteMany({ _id: { $in: deletedIds } });
+      const io = req.app.get('io');
+      deletedIds.forEach(messageId => {
+        io?.to(`conversation:${conversationId}`).emit('chat:message-deleted', {
+          conversationId,
+          messageId,
+        });
+      });
+
+      return res.json({ message: 'Messages deleted', deletedIds });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.delete(
+  '/:userId/messages/:messageId',
+  async (req, res, next) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(req.params.messageId)) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      const other = await User.findById(req.params.userId).select('_id');
+      if (!other || String(other._id) === String(req.user._id)) {
+        return res.status(404).json({ message: 'Chat recipient not found' });
+      }
+
+      const conversationId = conversationIdFor(req.user._id, other._id);
+      const message = await ChatMessage.findOne({
+        _id: req.params.messageId,
+        conversationId,
+        $or: [
+          { sender: req.user._id },
+          { sender: other._id },
+        ],
+      });
+
+      if (!message) {
+        return res.status(404).json({ message: 'Message not found or cannot be deleted' });
+      }
+
+      if (message.attachmentFileId) {
+        try {
+          await getChatFilesBucket().delete(message.attachmentFileId);
+        } catch (error) {
+          if (error.codeName !== 'NamespaceNotFound') throw error;
+        }
+      }
+
+      await message.deleteOne();
+      req.app.get('io')?.to(`conversation:${conversationId}`).emit('chat:message-deleted', {
+        conversationId,
+        messageId: String(message._id),
+      });
+
+      return res.json({ message: 'Message deleted', messageId: String(message._id) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.patch(
+  '/:userId/messages/:messageId',
+  async (req, res, next) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(req.params.messageId)) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      const other = await User.findById(req.params.userId).select('_id');
+      if (!other || String(other._id) === String(req.user._id)) {
+        return res.status(404).json({ message: 'Chat recipient not found' });
+      }
+
+      const conversationId = conversationIdFor(req.user._id, other._id);
+      const message = await ChatMessage.findOne({
+        _id: req.params.messageId,
+        conversationId,
+        $or: [
+          { sender: req.user._id },
+          { sender: other._id },
+        ],
+      });
+
+      if (!message) {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+
+      if (message.type !== 'text' && message.messageType !== 'text') {
+        return res.status(400).json({ message: 'Only text messages can be edited' });
+      }
+
+      const text = String(req.body?.text || '').trim();
+      if (!text) {
+        return res.status(400).json({ message: 'Message cannot be empty' });
+      }
+
+      message.text = text;
+      message.editedAt = new Date();
+      await message.save();
+
+      req.app.get('io')?.to(`conversation:${conversationId}`).emit('chat:message-updated', message);
+      return res.json(message);
+    } catch (error) {
+      next(error);
+    }
   },
 );
 
@@ -348,86 +711,72 @@ router.post(
   '/:userId',
   async (req, res) => {
     const body = req.body || {};
-
-    let type = [
-      'text',
-      'image',
-      'video',
-      'document',
-      'voice',
-    ].includes(body.type)
-      ? body.type
-      : 'text';
-
-    const text = String(
-      body.text || '',
-    ).trim();
-
-    const attachmentUrl = String(
-      body.attachmentUrl || '',
-    ).trim();
-
-    if (type === 'text' && attachmentUrl) {
-      type = inferAttachmentType(body);
-    }
-
     const other =
       await User.findById(
         req.params.userId,
       ).select('_id');
 
-    if (!other) {
+    if (!other || String(other._id) === String(req.user._id)) {
       return res.status(404).json({
-        message: 'User not found',
+        message: 'Chat recipient not found',
       });
     }
 
-    if (type === 'text' && !text) {
-      return res.status(400).json({
-        message: 'Message cannot be empty',
-      });
+    const conversationId = conversationIdFor(
+      req.user._id,
+      other._id,
+    );
+    let messageType = body.messageType || body.type || 'text';
+    if (messageType === 'voice') messageType = 'audio';
+    if (!['text', 'image', 'video', 'audio'].includes(messageType)) {
+      messageType = inferAttachmentType(body);
     }
 
-    if (
-      ['image', 'video', 'document'].includes(type) &&
-      !attachmentUrl
-    ) {
-      return res.status(400).json({
-        message: 'Attachment URL is required',
-      });
+    const text = String(body.text || '').trim();
+    const attachmentUrl = String(body.attachmentUrl || '').trim();
+    const attachmentName = String(body.attachmentName || body.fileName || '').trim();
+    const attachmentMimeType = String(body.attachmentMimeType || body.fileType || '').trim();
+    const attachmentSize = Number(body.attachmentSize ?? body.fileSize ?? 0);
+    const duration = Number(body.duration || 0);
+
+    if (messageType === 'text' && !text) {
+      return res.status(400).json({ message: 'Message cannot be empty' });
     }
 
-    const message =
-      await ChatMessage.create({
-        sender: req.user._id,
-        recipient: other._id,
-        type,
-        text,
-        attachmentUrl,
-        fileName: String(
-          body.fileName || '',
-        ),
-        fileType: String(
-          body.fileType || '',
-        ),
-        fileSize: Number(
-          body.fileSize || 0,
-        ),
-        duration: Number(
-          body.duration || 0,
-        ),
-        caption: String(
-          body.caption || '',
-        ),
-        waveform: Array.isArray(
-          body.waveform,
-        )
-          ? body.waveform
-              .slice(0, 120)
-              .map(Number)
-              .filter(Number.isFinite)
-          : [],
-      });
+    if (messageType !== 'text' && !attachmentUrl) {
+      return res.status(400).json({ message: 'Attachment URL is required' });
+    }
+
+    if (messageType !== 'text' && !/^https:\/\//i.test(attachmentUrl)) {
+      return res.status(400).json({ message: 'Attachment URL must be a secure cloud URL' });
+    }
+
+    const message = await ChatMessage.create({
+      sender: req.user._id,
+      recipient: other._id,
+      receiver: other._id,
+      conversationId,
+      type: messageType === 'audio' ? 'voice' : messageType,
+      messageType,
+      text,
+      attachmentUrl,
+      fileName: attachmentName,
+      fileType: attachmentMimeType,
+      fileSize: attachmentSize,
+      attachmentName,
+      attachmentMimeType,
+      attachmentSize,
+      duration,
+      caption: String(body.caption || ''),
+      waveform: Array.isArray(body.waveform)
+        ? body.waveform.slice(0, 120).map(Number).filter(Number.isFinite)
+        : [],
+      deliveryStatus: 'sent',
+    });
+
+    const io = req.app.get('io');
+    io?.to(`conversation:${conversationId}`).emit('chat:message', message);
+    io?.to(`user:${String(other._id)}`).emit('chat:message', message);
 
     return res.status(201).json(message);
   },

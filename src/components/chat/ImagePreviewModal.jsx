@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -18,14 +19,24 @@ import Video from 'react-native-video';
  */
 export default function ImagePreviewModal({ visible, image, theme, onCancel, onSend }) {
   const [caption, setCaption] = useState('');
+  const [mediaReady, setMediaReady] = useState(false);
+  const [dimensions, setDimensions] = useState(null);
 
   React.useEffect(() => {
     if (visible) setCaption('');
+    if (visible) setMediaReady(false);
+    if (visible) setDimensions(null);
   }, [visible]);
 
   if (!image) return null;
-  const source = typeof image.uri === 'number' ? image.uri : { uri: image.uri };
+  const previewUri = image.previewUri || image.uri;
+  const source = typeof previewUri === 'number' ? previewUri : { uri: previewUri };
   const isVideo = image.type?.startsWith('video/');
+  const ratio = dimensions?.width && dimensions?.height
+    ? dimensions.width / dimensions.height
+    : 232 / 168;
+  const previewWidth = Math.min(388, 300 * ratio);
+  const previewHeight = Math.min(300, previewWidth / ratio);
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
@@ -33,21 +44,51 @@ export default function ImagePreviewModal({ visible, image, theme, onCancel, onS
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.backdrop}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={StyleSheet.absoluteFill}
+            onPress={onCancel}
+          />
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
             <Text style={[styles.title, { color: theme.ink }]}>
               {isVideo ? 'Send video' : 'Send photo'}
             </Text>
-            {isVideo ? (
-              <Video
-                source={source}
-                style={styles.preview}
-                resizeMode="cover"
-                paused
-                controls
-              />
-            ) : (
-              <Image source={source} style={styles.preview} resizeMode="cover" />
-            )}
+            <View
+              style={[
+                styles.previewWrap,
+                {
+                  width: isVideo ? '100%' : previewWidth,
+                  height: isVideo ? 260 : previewHeight,
+                },
+              ]}>
+              {!mediaReady ? (
+                <View style={styles.previewLoading}>
+                  <ActivityIndicator color={theme.primary} />
+                </View>
+              ) : null}
+              {isVideo ? (
+                <Video
+                  source={source}
+                  style={styles.preview}
+                  resizeMode="cover"
+                  paused
+                  controls
+                  onLoad={() => setMediaReady(true)}
+                  onError={() => setMediaReady(true)}
+                />
+              ) : (
+                <Image
+                  source={source}
+                  style={[styles.preview, { width: previewWidth, height: previewHeight }]}
+                  resizeMode="contain"
+                  onLoad={({ nativeEvent }) => {
+                    setDimensions(nativeEvent.source);
+                    setMediaReady(true);
+                  }}
+                  onError={() => setMediaReady(true)}
+                />
+              )}
+            </View>
             <TextInput
               style={[
                 styles.captionInput,
@@ -110,6 +151,19 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 14,
     backgroundColor: '#211F2B',
+  },
+  previewWrap: {
+    width: '100%',
+    height: 260,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#211F2B',
+  },
+  previewLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
   },
   captionInput: {
     marginTop: 12,

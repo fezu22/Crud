@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { DocumentIcon } from './ChatIcons';
 
 export function formatFileSize(bytes) {
@@ -28,7 +28,10 @@ export default function DocumentBubble({ message, theme, mine }) {
         <DocumentIcon color="#FFFFFF" size={20} />
       </View>
       <View style={styles.meta}>
-        <Text style={[styles.name, { color: mine ? '#EAF7F2' : theme.ink }]} numberOfLines={2}>
+        <Text
+          style={[styles.name, { color: mine ? '#EAF7F2' : theme.ink }]}
+          numberOfLines={2}
+          ellipsizeMode="tail">
           {message.fileName || 'Document'}
         </Text>
         <Text style={[styles.size, { color: mine ? 'rgba(234, 247, 242, 0.75)' : theme.muted }]}>
@@ -44,10 +47,11 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
+    width: 232,
+    maxWidth: '100%',
     borderRadius: 12,
     padding: 10,
     marginBottom: 6,
-    maxWidth: 232,
   },
   iconSquare: {
     width: 40,
@@ -59,10 +63,12 @@ const styles = StyleSheet.create({
   },
   meta: {
     flex: 1,
+    minWidth: 0,
   },
   name: {
     fontSize: 13,
     fontWeight: '700',
+    flexShrink: 1,
   },
   size: {
     fontSize: 11,

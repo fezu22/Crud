@@ -2,8 +2,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MicIcon } from './ChatIcons';
 import { formatDuration } from './VoiceMessageBubble';
+import Sound from 'react-native-nitro-sound';
 
 const MAX_SECONDS = 120;
+const BAR_COUNT = 30;
+
+function emptyWaveform() {
+  return Array.from({ length: BAR_COUNT }, () => 0.12);
+}
+
+function meteringToAmplitude(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0.12;
+  return Math.max(0.08, Math.min(1, (numeric + 60) / 60));
+}
 
 /**
  * Recording overlay: pulsing red indicator, running timer, cancel and send.
@@ -11,29 +23,100 @@ const MAX_SECONDS = 120;
  * time and produces a simulated voice message, without touching a
  * microphone buffer, so it cannot crash on devices without an audio module.
  */
-export default function VoiceRecorderModal({ visible, theme, onCancel, onSend }) {
+export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, onError }) {
   const [seconds, setSeconds] = useState(0);
+  const [recordingPath, setRecordingPath] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState('');
+  const [waveform, setWaveform] = useState(emptyWaveform);
   const pulse = useRef(new Animated.Value(0.35)).current;
   const intervalRef = useRef(null);
+  const startupTimerRef = useRef(null);
+  const onErrorRef = useRef(onError);
+
+  onErrorRef.current = onError;
 
   useEffect(() => {
     if (!visible) {
       setSeconds(0);
+      setRecordingPath('');
+      setStarting(false);
+      setStartError('');
+      setWaveform(emptyWaveform());
       return undefined;
     }
-    intervalRef.current = setInterval(() => {
-      setSeconds(current => {
-        if (current + 1 >= MAX_SECONDS) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-          return MAX_SECONDS;
+    let mounted = true;
+    setStarting(true);
+    setStartError('');
+    setWaveform(emptyWaveform());
+
+    const startRecording = async () => {
+      try {
+        Sound.setSubscriptionDuration(0.08);
+        Sound.addRecordBackListener(recording => {
+          if (!mounted) return;
+          const amplitude = meteringToAmplitude(recording.currentMetering);
+          setWaveform(current => current.map((_, index) => {
+            const variation = 0.65 + ((index * 17) % 35) / 100;
+            return Math.max(0.08, Math.min(1, amplitude * variation));
+          }));
+        });
+
+        // Conservative mono settings avoid MediaRecorder prepare failures on
+        // devices that do not support the library's high-quality defaults.
+        const path = await Promise.race([
+          Sound.startRecorder(
+            undefined,
+            {
+              AudioSamplingRate: 44100,
+              AudioEncodingBitRate: 128000,
+              AudioChannels: 1,
+            },
+            true,
+          ),
+          new Promise((_, reject) => {
+            startupTimerRef.current = setTimeout(() => {
+              reject(new Error('Recorder startup timed out. Check microphone access and try again.'));
+            }, 10000);
+          }),
+        ]);
+
+        if (!mounted) return;
+        setRecordingPath(path);
+        setStarting(false);
+        intervalRef.current = setInterval(() => {
+          setSeconds(current => {
+            if (current + 1 >= MAX_SECONDS) {
+              clearInterval(intervalRef.current);
+              intervalRef.current = null;
+              return MAX_SECONDS;
+            }
+            return current + 1;
+          });
+        }, 1000);
+      } catch (error) {
+        if (!mounted) return;
+        setStarting(false);
+        setStartError(error?.message || 'Could not start the microphone.');
+        onErrorRef.current?.(error);
+      } finally {
+        if (startupTimerRef.current) {
+          clearTimeout(startupTimerRef.current);
+          startupTimerRef.current = null;
         }
-        return current + 1;
-      });
-    }, 1000);
+      }
+    };
+
+    startRecording();
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = null;
+      if (startupTimerRef.current) clearTimeout(startupTimerRef.current);
+      startupTimerRef.current = null;
+      mounted = false;
+      Sound.removeRecordBackListener();
+      Sound.stopRecorder().catch(() => {});
     };
   }, [visible]);
 
@@ -76,21 +159,46 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend })
           <View style={[styles.waveCard, { backgroundColor: theme.surfaceAlt }]}>
             <MicIcon color={theme.primaryLight} size={22} />
             <Text style={[styles.timer, { color: theme.ink }]}>{formatDuration(seconds)}</Text>
+            <View style={styles.waveform}>
+              {waveform.map((level, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.waveBar,
+                    {
+                      height: 8 + level * 38,
+                      backgroundColor: theme.primaryLight,
+                    },
+                  ]}
+                />
+              ))}
+            </View>
             <Text style={[styles.hint, { color: theme.muted }]}>
-              Recording voice message… speak now
+              {startError || (starting ? 'Starting recorder…' : 'Recording voice message… speak now')}
             </Text>
           </View>
 
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.button, styles.cancel, { borderColor: theme.line }]}
-              onPress={onCancel}>
+              onPress={async () => {
+                await Sound.stopRecorder().catch(() => {});
+                onCancel();
+              }}>
               <Text style={[styles.cancelText, { color: theme.muted }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.button, { backgroundColor: theme.primary }]}
-              onPress={() => onSend(Math.max(1, seconds))}>
-              <Text style={styles.sendText}>Send</Text>
+              disabled={starting || !recordingPath || Boolean(startError)}
+              onPress={async () => {
+                const path = await Sound.stopRecorder().catch(() => '');
+                onSend(Math.max(1, seconds), {
+                  uri: path || recordingPath,
+                  type: 'audio/m4a',
+                  fileName: `voice_${Date.now()}.m4a`,
+                }, waveform);
+              }}>
+              <Text style={styles.sendText}>{starting ? 'Starting…' : 'Send'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -147,6 +255,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 26,
     paddingHorizontal: 16,
+  },
+  waveform: {
+    width: '100%',
+    height: 54,
+    marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  waveBar: {
+    width: 3,
+    minHeight: 8,
+    borderRadius: 3,
   },
   timer: {
     fontSize: 34,

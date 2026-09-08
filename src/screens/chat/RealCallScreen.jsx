@@ -16,6 +16,7 @@ import {
     RTCIceCandidate,
     RTCSessionDescription,
     RTCView,
+    MediaStream,
     mediaDevices,
 } from 'react-native-webrtc';
 
@@ -194,17 +195,43 @@ export default function RealCallScreen({
                     .getTracks()
                     .forEach(track => peer.addTrack(track, stream));
 
-               const handleRemoteStream = event => {
-  const streamFromPeer =
-    event.streams?.[0] || event.stream;
+                const handleRemoteStream = event => {
+                    const streamFromPeer =
+                        event.streams?.[0] ||
+                        event.stream ||
+                        (event.track
+                            ? new MediaStream([event.track])
+                            : null);
 
-  if (streamFromPeer) {
-    setRemoteStream(streamFromPeer);
-    setStatus('connected');
-  }
-};
+                    if (streamFromPeer) {
+                        setRemoteStream(current => {
+                            if (!current || current.id !== streamFromPeer.id) {
+                                return streamFromPeer;
+                            }
+
+                            if (event.track && !current.getTracks().some(track => track.id === event.track.id)) {
+                                current.addTrack(event.track);
+                            }
+                            return current;
+                        });
+                        setStatus('connected');
+                    }
+                };
 
 peer.ontrack = handleRemoteStream;
+peer.onaddstream = handleRemoteStream;
+
+peer.onconnectionstatechange = () => {
+    if (['connected', 'completed'].includes(peer.connectionState)) {
+        setStatus('connected');
+    }
+};
+
+peer.oniceconnectionstatechange = () => {
+    if (['connected', 'completed'].includes(peer.iceConnectionState)) {
+        setStatus('connected');
+    }
+};
 
 if (peer.addEventListener) {
   peer.addEventListener(

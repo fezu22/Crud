@@ -314,6 +314,32 @@ export async function getChatMessages(userId, token) {
   return request(`/chat/${userId}`, { token });
 }
 
+export async function deleteChatMessage(userId, messageId, token) {
+  return request(`/chat/${userId}/messages/${messageId}`, {
+    method: 'DELETE',
+    token,
+    fallbackMessage: 'Failed to delete message',
+  });
+}
+
+export async function deleteChatMessages(userId, messageIds, token, mode = 'everyone') {
+  return request(`/chat/${userId}/messages`, {
+    method: 'DELETE',
+    token,
+    body: { messageIds, mode },
+    fallbackMessage: 'Failed to delete messages',
+  });
+}
+
+export async function editChatMessage(userId, messageId, text, token) {
+  return request(`/chat/${userId}/messages/${messageId}`, {
+    method: 'PATCH',
+    token,
+    body: { text },
+    fallbackMessage: 'Failed to edit message',
+  });
+}
+
 export async function sendChatMessage(userId, textOrPayload, token, extra = {}) {
   const body =
     typeof textOrPayload === 'object' && textOrPayload !== null
@@ -329,7 +355,7 @@ export async function sendChatMessage(userId, textOrPayload, token, extra = {}) 
 
 function isVideoFile(file) {
   const type = file.type || '';
-  const name = file.fileName || '';
+  const name = file.fileName || file.name || '';
 
   return (
     type.startsWith('video/') ||
@@ -339,7 +365,7 @@ function isVideoFile(file) {
 
 function isImageFile(file) {
   const type = file.type || '';
-  const name = file.fileName || '';
+  const name = file.fileName || file.name || '';
 
   return (
     type.startsWith('image/') ||
@@ -347,56 +373,126 @@ function isImageFile(file) {
   );
 }
 
-export async function uploadChatAttachment(file, cloudStorage) {
-  if (
-    !cloudStorage?.cloudName?.trim() ||
-    !cloudStorage?.uploadPreset?.trim()
-  ) {
-    throw new Error(
-      'Connect your Cloudinary storage before sending media in chat.',
-    );
+function isAudioFile(file) {
+  const type = file.type || '';
+  const name = file.fileName || file.name || '';
+
+  return (
+    type.startsWith('audio/') ||
+    /\.(aac|m4a|mp3|ogg|wav|webm)$/i.test(name)
+  );
+}
+
+export async function uploadChatAttachment(userId, file, token, extra = {}, onProgress) {
+  if (!file?.uri) {
+    throw new Error('The selected attachment is unavailable.');
+  }
+
+  const fileSize = Number(file.size || file.fileSize || 0);
+  const maxSize = isVideoFile(file)
+    ? 100 * 1024 * 1024
+    : isAudioFile(file)
+      ? 25 * 1024 * 1024
+      : 15 * 1024 * 1024;
+
+  if (fileSize > maxSize) {
+    throw new Error(`This attachment is too large. Maximum size is ${Math.round(maxSize / 1024 / 1024)} MB.`);
   }
 
   const fileType = file.type || '';
   const resourceType = isVideoFile(file)
     ? 'video'
-    : isImageFile(file)
-      ? 'image'
-      : 'raw';
-  const messageType = resourceType === 'raw' ? 'document' : resourceType;
+    : isAudioFile(file)
+      ? 'audio'
+      : isImageFile(file)
+        ? 'image'
+        : 'raw';
+  const messageType = isAudioFile(file)
+    ? 'audio'
+    : resourceType === 'raw'
+      ? 'document'
+      : resourceType;
   const body = new FormData();
 
   body.append('file', {
     uri: file.uri,
     type: fileType || 'application/octet-stream',
-    name: file.fileName || `chat_${Date.now()}`,
+    name: file.fileName || file.name || `chat_${Date.now()}`,
   });
 
-  body.append('upload_preset', cloudStorage.uploadPreset.trim());
+  body.append('type', extra.type || messageType);
+  body.append('text', extra.text || '');
+  body.append('caption', extra.caption || '');
+  body.append('duration', String(extra.duration || 0));
+  body.append('mediaWidth', String(extra.mediaWidth || 0));
+  body.append('mediaHeight', String(extra.mediaHeight || 0));
 
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${cloudStorage.cloudName.trim()}/${resourceType}/upload`,
-    {
-      method: 'POST',
-      body,
-    },
-  );
-
-  const uploaded = await response.json();
-
-  if (!response.ok || !uploaded.secure_url) {
-    throw new Error(
-      uploaded.error?.message || 'Chat media upload failed',
-    );
+  if (extra.waveform) {
+    body.append('waveform', JSON.stringify(extra.waveform));
   }
 
-  return {
-    attachmentUrl: uploaded.secure_url,
-    fileName: file.fileName || uploaded.original_filename || '',
-    fileType,
-    fileSize: file.size || uploaded.bytes || 0,
-    type: messageType,
-  };
+  const saved = await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(
+      'POST',
+      `${API_BASE_URL}/chat/${userId}/attachments`,
+    );
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress?.(event.loaded / event.total);
+    };
+    xhr.onload = () => {
+      const rawResponse = xhr.responseText || xhr.response || '';
+      let data = {};
+
+      if (typeof rawResponse === 'object') {
+        data = rawResponse || {};
+      } else if (rawResponse) {
+        try {
+          data = JSON.parse(rawResponse);
+        } catch {
+          const preview = String(rawResponse)
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 160);
+          reject(
+            new Error(
+              `Upload failed (${xhr.status || 'no response'}): ${preview || 'The server returned an unreadable response.'}`,
+            ),
+          );
+          return;
+        }
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(
+          new Error(
+            data?.message ||
+              `Chat attachment upload failed (${xhr.status || 'no response'}).`,
+          ),
+        );
+        return;
+      }
+
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        reject(new Error('Upload completed but the server returned no message data.'));
+        return;
+      }
+
+      resolve(data);
+    };
+    xhr.onerror = () =>
+      reject(
+        new Error(
+          'Chat attachment upload failed. Check your internet connection and server status, then retry.',
+        ),
+      );
+    xhr.send(body);
+  });
+
+  return saved;
 }
 
 // ================= CLOUDINARY MEDIA API =================
