@@ -378,14 +378,7 @@ export default function PremiumChatScreen({
     };
     socket.on('presence:update', onPresenceUpdate);
 
-    socket.on('call:incoming', call => {
-      if (
-        call.fromUserId !==
-        String(currentUserId)
-      ) {
-        setIncomingCall(call);
-      }
-    });
+    // Incoming calls are owned by the app-level host, including other tabs.
 
     return () => {
       socket.off('presence:update', onPresenceUpdate);
@@ -1421,13 +1414,13 @@ export default function PremiumChatScreen({
             </View>
           ) : null}
           <TouchableOpacity
-            style={styles.composerButton}
+            style={[styles.composerButton, { backgroundColor: theme.surfaceAlt, borderColor: theme.line, borderWidth: 1, borderRadius: 14 }]}
             onPress={() =>
               setAttachmentOpen(true)
             }
             accessibilityLabel="Attach a file">
             <PaperclipIcon
-              color={theme.muted}
+              color={theme.primaryLight}
               size={19}
             />
           </TouchableOpacity>
@@ -1455,13 +1448,13 @@ export default function PremiumChatScreen({
                 styles.sendButton,
                 {
                   backgroundColor:
-                    theme.primary,
+                    theme.outgoingBase,
                 },
               ]}
               onPress={sendText}
               accessibilityLabel="Send message">
               <SendIcon
-                color="#FFFFFF"
+                color={theme.outgoingInk}
                 size={18}
               />
             </TouchableOpacity>

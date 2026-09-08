@@ -16,6 +16,32 @@ class BluetoothAudioRouteModule(
   override fun getName() = "BluetoothAudioRoute"
 
   @ReactMethod
+  fun setCallSpeaker(enabled: Boolean) {
+    val manager = reactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    manager.mode = AudioManager.MODE_IN_COMMUNICATION
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+      val type = if (enabled) AudioDeviceInfo.TYPE_BUILTIN_SPEAKER else AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+      val device = manager.availableCommunicationDevices.firstOrNull { it.type == type }
+      if (device != null) manager.setCommunicationDevice(device)
+    } else {
+      @Suppress("DEPRECATION")
+      manager.isSpeakerphoneOn = enabled
+    }
+  }
+
+  @ReactMethod
+  fun stopCallAudio() {
+    val manager = reactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+      manager.clearCommunicationDevice()
+    } else {
+      @Suppress("DEPRECATION")
+      manager.isSpeakerphoneOn = false
+    }
+    manager.mode = AudioManager.MODE_NORMAL
+  }
+
+  @ReactMethod
   fun start() {
     val audioManager = reactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     val bluetoothDevice = audioManager.getDevices(AudioManager.GET_DEVICES_ALL)

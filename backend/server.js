@@ -149,6 +149,10 @@ io.on('connection', socket => {
   };
 
   socket.on('call:invite', payload => {
+    if (!activeSockets.has(String(payload?.targetUserId || ''))) {
+      socket.emit('call:unavailable', { callId: payload?.callId });
+      return;
+    }
     forwardToUser('call:incoming', payload);
   });
 
@@ -160,8 +164,9 @@ io.on('connection', socket => {
     forwardToUser('call:rejected', payload);
   });
 
-  socket.on('call:hangup', payload => {
+  socket.on('call:hangup', (payload, acknowledge) => {
     forwardToUser('call:hangup', payload);
+    if (typeof acknowledge === 'function') acknowledge({ ok: true });
   });
 
   socket.on('webrtc:offer', payload => {

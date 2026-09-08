@@ -17,6 +17,8 @@ import PremiumChatScreen from './chat/PremiumChatScreen';
 import { formatClock } from '../components/chat/MessageBubble';
 import { DocumentIcon } from '../components/chat/ChatIcons';
 import { createCallSocket } from '../services/callService';
+import { vars } from 'nativewind';
+import { getChatTheme } from '../theme/chatTheme';
 import {
   loadCachedChatUsers,
   saveCachedChatUsers,
@@ -49,7 +51,7 @@ function isDocumentPreview(conversation) {
   );
 }
 
-function UserPicker({ visible, users, adminContact, query, loading, onQuery, onClose, onSelect }) {
+function UserPicker({ visible, users, adminContact, query, loading, onQuery, onClose, onSelect, theme }) {
   const skeletonOpacity = useRef(new Animated.Value(0.45)).current;
   const sheetTranslateY = useRef(new Animated.Value(0)).current;
 
@@ -101,33 +103,35 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={closePicker}>
-      <View className="flex-1 justify-end bg-black/60">
+      <View className="flex-1 justify-end bg-black/60" style={vars({
+        '--color-canvas': theme.background, '--color-surface': theme.surfaceAlt,
+        '--color-ink': theme.ink, '--color-muted': theme.muted, '--color-line': theme.line,
+      })}>
         <Animated.View
-          {...panResponder.panHandlers}
-          style={{ transform: [{ translateY: sheetTranslateY }] }}
+          style={{ transform: [{ translateY: sheetTranslateY }], minHeight: '65%', backgroundColor: theme.background }}
           className="max-h-[86%] rounded-t-[28px] bg-canvas px-5 pb-7 pt-3">
-          <View className="mb-4 items-center">
+          <View className="mb-4 items-center py-3" {...panResponder.panHandlers}>
             <View className="h-1 w-10 rounded-full bg-line" />
           </View>
           <View className="mb-4 flex-row items-center justify-between">
             {loading ? (
-              <Animated.View style={{ opacity: skeletonOpacity }} className="h-7 w-28 rounded-lg bg-surfaceAlt" />
+              <Animated.View style={{ opacity: skeletonOpacity, backgroundColor: theme.surfaceAlt }} className="h-7 w-28 rounded-lg" />
             ) : (
               <Text className="text-2xl font-extrabold text-ink">New chat</Text>
             )}
             {
-              <TouchableOpacity onPressIn={closePicker} accessibilityLabel="Close new chat">
+              <TouchableOpacity onPressIn={closePicker} hitSlop={12} accessibilityLabel="Close new chat">
               <Text className="text-2xl text-muted">×</Text>
               </TouchableOpacity>
             }
           </View>
           {loading ? (
-            <Animated.View style={{ opacity: skeletonOpacity }} className="mb-3 h-12 rounded-2xl bg-surfaceAlt" />
+            <Animated.View style={{ opacity: skeletonOpacity, backgroundColor: theme.surfaceAlt }} className="mb-3 h-12 rounded-2xl" />
           ) : (
             <TextInput
               className="mb-3 h-12 rounded-2xl border border-line bg-surface px-4 text-ink"
               placeholder="Search users..."
-              placeholderTextColor="#817C94"
+              placeholderTextColor={theme.muted}
               value={query}
               onChangeText={onQuery}
               autoFocus
@@ -135,15 +139,16 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
           )}
           {!loading && adminContact ? (
             <TouchableOpacity
-              className="mb-3 flex-row items-center rounded-2xl border border-brand/30 bg-[#F1EEFF] p-4 dark:border-[#8B78FF] dark:bg-[#2A2440]"
+              className="mb-3 flex-row items-center rounded-2xl border p-4"
+              style={{ backgroundColor: theme.separatorBg, borderColor: theme.primary }}
               onPress={() => onSelect(adminContact)}
               accessibilityLabel="Chat with Admin">
-              <View className="mr-3 h-12 w-12 items-center justify-center rounded-full bg-brand">
-                <Text className="font-extrabold text-white">A</Text>
+              <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.outgoingBase }}>
+                <Text className="font-extrabold" style={{ color: theme.outgoingInk }}>A</Text>
               </View>
               <View className="flex-1">
-                <Text className="font-extrabold text-ink dark:text-white">Chat with Admin</Text>
-                <Text className="mt-1 text-xs text-muted dark:text-[#C4BDD4]">
+                <Text className="font-extrabold text-ink">Chat with Admin</Text>
+                <Text className="mt-1 text-xs text-muted">
                   {adminContact.online ? 'Online' : 'Get help from the Medi team'}
                 </Text>
               </View>
@@ -154,12 +159,12 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
             <Animated.View style={{ opacity: skeletonOpacity }} className="py-2">
               {[0, 1, 2, 3].map(index => (
                 <View key={index} className="mb-3 flex-row items-center border-b border-line py-3">
-                  <View className="mr-3 h-12 w-12 rounded-full bg-surfaceAlt" />
+                  <View className="mr-3 h-12 w-12 rounded-full bg-surface" />
                   <View className="flex-1">
-                    <View className="mb-2 h-4 w-32 rounded-full bg-surfaceAlt" />
-                    <View className="h-3 w-24 rounded-full bg-surfaceAlt" />
+                    <View className="mb-2 h-4 w-32 rounded-full bg-surface" />
+                    <View className="h-3 w-24 rounded-full bg-surface" />
                   </View>
-                  <View className="h-5 w-5 rounded-full bg-surfaceAlt" />
+                  <View className="h-5 w-5 rounded-full bg-surface" />
                 </View>
               ))}
             </Animated.View>
@@ -173,8 +178,8 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
                   className="flex-row items-center border-b border-line py-3"
                   onPress={() => onSelect(item)}
                   accessibilityLabel={`Chat with ${item.name || 'user'}`}>
-                  <View className="mr-3 h-12 w-12 items-center justify-center rounded-full bg-[#EAE5FF]">
-                    <Text className="font-extrabold text-brand">{initials(item.name)}</Text>
+                  <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.separatorBg }}>
+                    <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.name)}</Text>
                   </View>
                   <View className="flex-1">
                     <View className="flex-row items-center">
@@ -204,6 +209,8 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
 }
 
 export default function ChatScreen({ token, user, onError, themeMode = 'dark' }) {
+  const theme = getChatTheme(themeMode);
+  const [search, setSearch] = useState('');
   const [conversations, setConversations] = useState([]);
   const [adminContact, setAdminContact] = useState(null);
   const [active, setActive] = useState(null);
@@ -215,8 +222,8 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
   const onErrorRef = useRef(onError);
   const currentUserId = user?.id || user?._id;
 
-  const refreshConversations = useCallback(async () => {
-    setLoadingConversations(true);
+  const refreshConversations = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoadingConversations(true);
     try {
       const value = await getConversations(token);
       setConversations(Array.isArray(value) ? value : []);
@@ -267,6 +274,11 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
   useEffect(() => {
     if (!token || !currentUserId) return undefined;
     const socket = createCallSocket(token);
+    let refreshTimer;
+    const refreshList = () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => refreshConversations(false), 200);
+    };
     const updatePresence = event => {
       const id = String(event?.userId || event?.fromUserId || '');
       if (!id) return;
@@ -283,11 +295,14 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
         : current);
     };
     socket.on('presence:update', updatePresence);
+    socket.on('chat:message', refreshList);
+    socket.on('connect', refreshList);
     return () => {
+      clearTimeout(refreshTimer);
       socket.off('presence:update', updatePresence);
       socket.disconnect();
     };
-  }, [currentUserId, token]);
+  }, [currentUserId, token, refreshConversations]);
 
   useEffect(() => {
     refreshConversations();
@@ -348,16 +363,20 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
   }
 
   return (
-    <View className="flex-1 bg-canvas">
+    <View className="flex-1 bg-canvas" style={vars({
+      '--color-canvas': theme.background, '--color-surface': theme.surface,
+      '--color-ink': theme.ink, '--color-muted': theme.muted, '--color-line': theme.line,
+    })}>
       <View className="flex-row items-start justify-between px-6 pb-5 pt-6">
         <View>
-          <Text className="text-[10px] font-extrabold tracking-[2px] text-brand">
-            CONNECT WITH YOUR COMMUNITY
+          <Text className="text-3xl font-extrabold text-ink">Messages</Text>
+          <Text className="mt-2 text-xs text-muted">
+            {conversations.filter(item => item.unreadCount > 0).length} unread conversations
           </Text>
-          <Text className="mt-1 text-4xl font-extrabold text-ink">Chat</Text>
         </View>
         <TouchableOpacity
-          className="h-12 w-12 items-center justify-center rounded-full bg-brand"
+          className="h-12 w-12 items-center justify-center rounded-2xl"
+          style={{ backgroundColor: theme.outgoingBase }}
           onPress={() => {
             setQuery('');
             setPickerUsers([]);
@@ -365,29 +384,35 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
             setPickerOpen(true);
           }}
           accessibilityLabel="Start a new chat">
-          <Text className="text-3xl font-light text-white">+</Text>
+          <Text className="text-3xl font-light" style={{ color: theme.outgoingInk }}>+</Text>
         </TouchableOpacity>
       </View>
 
+      <TextInput value={search} onChangeText={setSearch} placeholder="Search conversations..."
+        placeholderTextColor={theme.muted} accessibilityLabel="Search conversations"
+        className="mx-6 mb-6 h-12 rounded-2xl border border-line bg-surface px-4 text-ink" />
       <Text className="px-6 pb-3 text-xs font-extrabold uppercase tracking-[1.5px] text-muted">
-        Conversations
+        Recent
       </Text>
 
       {loadingConversations ? (
         <View className="items-center py-10">
-          <ActivityIndicator color="#6C4DF6" />
+          <ActivityIndicator color={theme.primary} />
         </View>
       ) : conversations.length ? (
         <FlatList
-          data={conversations}
+          data={conversations.filter(item => `${item.user?.name || ''} ${item.lastMessage || ''}`.toLowerCase().includes(search.trim().toLowerCase()))}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={<Text className="py-8 text-center text-muted">No matching conversations.</Text>}
           keyExtractor={item => String(item.user.id)}
           renderItem={({ item }) => (
             <TouchableOpacity
               className="mx-6 mb-3 flex-row items-center rounded-2xl border border-line bg-surface p-4"
+              style={item.unreadCount > 0 ? { backgroundColor: theme.separatorBg, borderColor: theme.primary } : undefined}
               onPress={() => setActive(item.user)}
               accessibilityLabel={`Open chat with ${item.user.name || 'user'}`}>
-              <View className="mr-3 h-12 w-12 items-center justify-center rounded-full bg-brand">
-                <Text className="font-extrabold text-white">{initials(item.user.name)}</Text>
+              <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.line }}>
+                <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.user.name)}</Text>
               </View>
               <View className="flex-1">
                 <View className="flex-row items-center justify-between">
@@ -407,6 +432,11 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
                   <Text className="flex-1 text-xs text-muted" numberOfLines={1}>
                     {item.lastMessage}
                   </Text>
+                  {item.unreadCount > 0 ? (
+                    <View style={{ backgroundColor: theme.outgoingBase, borderRadius: 12, paddingHorizontal: 7, paddingVertical: 3, marginLeft: 8 }}>
+                      <Text style={{ color: theme.outgoingInk, fontSize: 10, fontWeight: '800' }}>{item.unreadCount > 99 ? '99+' : item.unreadCount}</Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
               <Text className="text-2xl text-brand">›</Text>
@@ -417,14 +447,15 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
         <Text className="px-6 py-8 text-center text-muted">No conversations yet.</Text>
       )}
 
-      <View className="mx-6 mt-4 rounded-2xl border border-dashed border-line p-5">
+      {!loadingConversations && !conversations.length ? <View className="mx-6 mt-4 rounded-2xl border border-dashed border-line p-5">
         <Text className="text-center text-sm font-bold text-ink">Start a new conversation</Text>
         <Text className="mt-1 text-center text-xs leading-5 text-muted">
           Tap the + button above to choose any registered user.
         </Text>
-      </View>
+      </View> : null}
 
       <UserPicker
+        theme={theme}
         visible={pickerOpen}
         users={pickerUsers}
         adminContact={adminContact}

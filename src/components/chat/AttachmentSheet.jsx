@@ -29,8 +29,8 @@ export default function AttachmentSheet({
         <TouchableOpacity style={styles.backdropTouch} activeOpacity={1} onPress={onClose} />
         <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
           <View style={[styles.handle, { backgroundColor: theme.line }]} />
-          <Text style={[styles.title, { color: theme.ink }]}>Share</Text>
-
+          <Text style={[styles.title, { color: theme.ink }]}>Share something</Text>
+          <View style={styles.grid}>
           <OptionRow
             icon={<GalleryGlyph color={theme.primaryLight} />}
             title="Gallery"
@@ -53,6 +53,7 @@ export default function AttachmentSheet({
             onPress={onDocument}
           />
 
+          </View>
           <TouchableOpacity style={[styles.cancel, { borderColor: theme.line }]} onPress={onClose}>
             <Text style={[styles.cancelText, { color: theme.muted }]}>Cancel</Text>
           </TouchableOpacity>
@@ -62,7 +63,7 @@ export default function AttachmentSheet({
   );
 }
 
-function OptionRow({ icon, title, subtitle, theme, onPress }) {
+function OptionRow({ icon, title, theme, onPress }) {
   return (
     <TouchableOpacity
       style={[styles.row, { borderBottomColor: theme.line }]}
@@ -71,13 +72,13 @@ function OptionRow({ icon, title, subtitle, theme, onPress }) {
       <View style={[styles.iconCircle, { backgroundColor: theme.surfaceAlt }]}>{icon}</View>
       <View style={styles.rowText}>
         <Text style={[styles.rowTitle, { color: theme.ink }]}>{title}</Text>
-        <Text style={[styles.rowSubtitle, { color: theme.muted }]}>{subtitle}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
+  grid: { flexDirection: 'row', gap: 10 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
@@ -106,21 +107,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   row: {
-    flexDirection: 'row',
+    flex: 1,
     alignItems: 'center',
     paddingVertical: 13,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   iconCircle: {
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginBottom: 10,
   },
   rowText: {
-    flex: 1,
+    alignItems: 'center',
   },
   rowTitle: {
     fontSize: 15,

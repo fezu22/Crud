@@ -32,7 +32,7 @@ export default function DocumentBubble({ message, theme, mine, onPress }) {
           style={[
             styles.fileGlyph,
             {
-              backgroundColor: mine ? '#FFFFFF' : theme.primary,
+              backgroundColor: mine ? theme.outgoingInk : theme.primary,
             },
           ]}>
           <View
@@ -47,12 +47,12 @@ export default function DocumentBubble({ message, theme, mine, onPress }) {
       </View>
       <View style={styles.meta}>
         <Text
-          style={[styles.name, { color: mine ? '#FFFFFF' : theme.ink }]}
+          style={[styles.name, { color: mine ? theme.outgoingInk : theme.ink }]}
           numberOfLines={2}
           ellipsizeMode="tail">
           {message.fileName || 'Document'}
         </Text>
-        <Text style={[styles.size, { color: mine ? 'rgba(255, 255, 255, 0.78)' : theme.muted }]}>
+        <Text style={[styles.size, { color: mine ? theme.outgoingMuted : theme.muted }]}>
           {extensionOf(message)}
           {message.fileSize ? ` · ${formatFileSize(message.fileSize)}` : ''}
         </Text>

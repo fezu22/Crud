@@ -59,7 +59,7 @@ export default function MessageBubble({
           {messageText ? (
             <Text
               style={{
-                color: outgoing ? '#F5F3FA' : theme.ink,
+                color: outgoing ? theme.outgoingInk : theme.ink,
                 fontSize: 15,
                 lineHeight: 21,
               }}>
@@ -69,7 +69,7 @@ export default function MessageBubble({
           <View style={styles.metaRow}>
             <Text
               style={{
-                color: outgoing ? 'rgba(245, 243, 250, 0.75)' : theme.muted,
+                color: outgoing ? theme.outgoingMuted : theme.muted,
                 fontSize: 10,
                 fontWeight: '600',
               }}>
@@ -78,7 +78,7 @@ export default function MessageBubble({
             {message.editedAt ? (
               <Text
                 style={{
-                  color: outgoing ? 'rgba(245, 243, 250, 0.75)' : theme.muted,
+                  color: outgoing ? theme.outgoingMuted : theme.muted,
                   fontSize: 10,
                   fontWeight: '600',
                 }}>

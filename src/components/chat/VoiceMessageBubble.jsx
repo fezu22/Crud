@@ -151,8 +151,8 @@ export default function VoiceMessageBubble({ message, mine, theme, token }) {
     }
   };
 
-  const playedColor = mine ? '#C9BCFF' : theme.primary;
-  const idleColor = mine ? 'rgba(255,255,255,0.45)' : theme.line;
+  const playedColor = mine ? theme.outgoingInk : theme.primary;
+  const idleColor = mine ? 'rgba(0,44,51,0.25)' : theme.line;
   const progress = duration > 0 ? elapsed / duration : 0;
 
   return (
@@ -160,7 +160,7 @@ export default function VoiceMessageBubble({ message, mine, theme, token }) {
       <TouchableOpacity
         onPress={toggle}
         disabled={preparing}
-        style={[styles.playButton, { backgroundColor: mine ? 'rgba(255,255,255,0.18)' : theme.primary }]}
+        style={[styles.playButton, { backgroundColor: mine ? theme.outgoingInk : theme.primary }]}
         accessibilityLabel={playing ? 'Pause voice message' : 'Play voice message'}>
         {preparing ? (
           <ActivityIndicator color="#FFFFFF" size="small" />
@@ -198,7 +198,7 @@ export default function VoiceMessageBubble({ message, mine, theme, token }) {
           })}
         </View>
         <View style={styles.meta}>
-          <Text style={[styles.time, { color: mine ? 'rgba(234,247,242,0.8)' : theme.muted }]}>
+          <Text style={[styles.time, { color: mine ? theme.outgoingMuted : theme.muted }]}>
             {formatDuration(playing ? elapsed : duration)}
           </Text>
           {playing ? (

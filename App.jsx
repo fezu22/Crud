@@ -32,6 +32,7 @@ import ConnectCloudStorageScreen from './src/screens/ConnectCloudStorageScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
 import ProjectsScreen from './src/screens/projects/ProjectsScreen';
 import ChatScreen from './src/screens/ChatScreen';
+import IncomingCallHost from './src/components/chat/IncomingCallHost';
 import AdminDashboardScreen from './src/screens/admin/AdminDashboardScreen';
 import ProjectDetailModal from './src/screens/projects/ProjectDetailModal';
 import ProjectFormModal from './src/screens/projects/ProjectFormModal';
@@ -585,7 +586,20 @@ export default function App() {
   }
 
   if (user?.role === 'admin') {
-    return <SafeAreaProvider><AlertNotificationRoot theme={preferences.theme}><View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}><StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} /><AdminDashboardScreen token={token} user={user} themeMode={preferences.theme} onLogout={logout} onError={error => showError('Chat error', error)} /><ConfirmDialog config={confirm} onCancel={closeConfirm} /></SafeAreaView></View></AlertNotificationRoot></SafeAreaProvider>;
+    return (
+      <SafeAreaProvider>
+        <AlertNotificationRoot theme={preferences.theme}>
+          <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
+            <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
+              <IncomingCallHost key={token} token={token} themeMode={preferences.theme} />
+              <StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} />
+              <AdminDashboardScreen token={token} user={user} themeMode={preferences.theme} onLogout={logout} onError={error => showError('Chat error', error)} />
+              <ConfirmDialog config={confirm} onCancel={closeConfirm} />
+            </SafeAreaView>
+          </View>
+        </AlertNotificationRoot>
+      </SafeAreaProvider>
+    );
   }
 
   return (
@@ -593,6 +607,7 @@ export default function App() {
       <AlertNotificationRoot theme={preferences.theme}>
       <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
         <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
+          <IncomingCallHost key={token} token={token} themeMode={preferences.theme} />
           <StatusBar
             barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'}
             backgroundColor={preferences.theme === 'dark' ? '#12111a' : '#ffffff'}

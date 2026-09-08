@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    BackHandler,
+    NativeModules,
     PermissionsAndroid,
     Platform,
     StatusBar,
@@ -35,12 +37,10 @@ import { formatDuration } from '../../components/chat/VoiceMessageBubble';
 import {
     createCallSocket,
     makeCallId,
+    getIceServers,
+    setActiveCallId,
+    disconnectAfterSignal,
 } from '../../services/callService';
-
-const ICE_SERVERS = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-];
 
 function getInitials(name) {
     return String(name || 'User')
@@ -97,7 +97,10 @@ export default function RealCallScreen({
     );
     const [localStream, setLocalStream] = useState(null);
     const [remoteStream, setRemoteStream] = useState(null);
+    const [remoteVideoKey, setRemoteVideoKey] = useState('');
     const [error, setError] = useState('');
+    const [speakerOn, setSpeakerOn] = useState(callType === 'video');
+    const connectTimerRef = useRef(null);
 
     const socketRef = useRef(null);
     const peerRef = useRef(null);
@@ -115,19 +118,22 @@ export default function RealCallScreen({
         '',
     );
 
-    const finishCall = notifyPeer => {
+    const finishCall = (notifyPeer, notifyParent = true) => {
         if (endedRef.current) {
             return;
         }
 
         endedRef.current = true;
+        clearTimeout(connectTimerRef.current);
+        NativeModules.BluetoothAudioRoute?.stopCallAudio?.();
+        setActiveCallId(null);
 
         if (
             notifyPeer &&
             socketRef.current &&
             peerUserIdRef.current
         ) {
-            socketRef.current.emit('call:hangup', {
+            disconnectAfterSignal(socketRef.current, 'call:hangup', {
                 targetUserId: peerUserIdRef.current,
                 callId: callIdRef.current,
                 callType,
@@ -139,19 +145,51 @@ export default function RealCallScreen({
             .forEach(track => track.stop());
 
         peerRef.current?.close?.();
-        socketRef.current?.disconnect?.();
+        if (!notifyPeer) socketRef.current?.disconnect?.();
 
-        onEnd?.();
+        if (notifyParent) onEnd?.();
     };
 
     useEffect(() => {
         let mounted = true;
-        let socket;
+        const socket = createCallSocket(token);
+        socketRef.current = socket;
         let peer;
+        const pendingCandidates = [];
+        let remoteReady = false;
+        let signalChain = Promise.resolve();
+        setActiveCallId(callIdRef.current);
+        const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
+            finishCall(true);
+            return true;
+        });
+        const matches = data => mounted && !endedRef.current && data?.callId === callIdRef.current &&
+            (!data.fromUserId || String(data.fromUserId) === String(peerUserIdRef.current));
+        const fail = callError => {
+            if (!mounted || endedRef.current) return;
+            Alert.alert('Call unavailable', callError.message || 'Could not connect. Please try again.');
+            finishCall(true);
+        };
+        socket.on('call:hangup', data => { if (matches(data)) finishCall(false); });
+        socket.on('call:rejected', data => { if (matches(data)) finishCall(false); });
+        socket.on('call:unavailable', data => {
+            if (matches(data)) fail(new Error('This user is offline or unavailable.'));
+        });
+        connectTimerRef.current = setTimeout(() => fail(new Error('No connection after 60 seconds. Please try again.')), 60000);
+        const setRemote = async description => {
+            await peer.setRemoteDescription(new RTCSessionDescription(description));
+            remoteReady = true;
+            while (pendingCandidates.length) {
+                await peer.addIceCandidate(new RTCIceCandidate(pendingCandidates.shift()));
+            }
+        };
 
         const startCall = async () => {
             try {
+                const iceServers = await getIceServers(token);
+                if (!mounted || endedRef.current) return;
                 const allowed = await requestPermissions(callType);
+                if (!mounted || endedRef.current) return;
 
                 if (!allowed) {
                     throw new Error(
@@ -178,7 +216,7 @@ export default function RealCallScreen({
     : false,
                     });
 
-                if (!mounted) {
+                if (!mounted || endedRef.current) {
                     stream
                         .getTracks()
                         .forEach(track => track.stop());
@@ -186,13 +224,11 @@ export default function RealCallScreen({
                 }
 
                 localStreamRef.current = stream;
+                NativeModules.BluetoothAudioRoute?.setCallSpeaker?.(callType === 'video');
                 setLocalStream(stream);
 
-                socket = createCallSocket(token);
-                socketRef.current = socket;
-
                 peer = new RTCPeerConnection({
-                    iceServers: ICE_SERVERS,
+                    iceServers,
                 });
 
                 peerRef.current = peer;
@@ -201,26 +237,27 @@ export default function RealCallScreen({
                     .getTracks()
                     .forEach(track => peer.addTrack(track, stream));
 
+                const combinedRemoteStream = new MediaStream();
                 const handleRemoteStream = event => {
+                    if (!mounted || endedRef.current) return;
+                    if (event.track && !combinedRemoteStream.getTracks().some(track => track.id === event.track.id)) {
+                        combinedRemoteStream.addTrack(event.track);
+                    }
                     const streamFromPeer =
                         event.streams?.[0] ||
                         event.stream ||
                         (event.track
-                            ? new MediaStream([event.track])
+                            ? combinedRemoteStream
                             : null);
 
                     if (streamFromPeer) {
-                        setRemoteStream(current => {
-                            if (!current || current.id !== streamFromPeer.id) {
-                                return streamFromPeer;
-                            }
-
-                            if (event.track && !current.getTracks().some(track => track.id === event.track.id)) {
-                                current.addTrack(event.track);
-                            }
-                            return current;
-                        });
-                        setStatus('connected');
+                        const videoTracks = streamFromPeer.getTracks().filter(track => track.kind === 'video');
+                        if (videoTracks.length) {
+                            setRemoteStream(streamFromPeer);
+                            // Android ignores an unchanged streamURL. Remount when
+                            // video arrives after audio or the video track changes.
+                            setRemoteVideoKey(`${streamFromPeer.toURL()}:${videoTracks.map(track => track.id).join(',')}`);
+                        }
                     }
                 };
 
@@ -228,28 +265,22 @@ peer.ontrack = handleRemoteStream;
 peer.onaddstream = handleRemoteStream;
 
 peer.onconnectionstatechange = () => {
+    if (!mounted || endedRef.current) return;
     if (['connected', 'completed'].includes(peer.connectionState)) {
+        clearTimeout(connectTimerRef.current);
         setStatus('connected');
+    } else if (peer.connectionState === 'failed') {
+        fail(new Error('Video connection failed. Check your network and the server TURN relay configuration.'));
     }
 };
 
 peer.oniceconnectionstatechange = () => {
+    if (!mounted || endedRef.current) return;
     if (['connected', 'completed'].includes(peer.iceConnectionState)) {
+        clearTimeout(connectTimerRef.current);
         setStatus('connected');
     }
 };
-
-if (peer.addEventListener) {
-  peer.addEventListener(
-    'track',
-    handleRemoteStream,
-  );
-
-  peer.addEventListener(
-    'addstream',
-    handleRemoteStream,
-  );
-}
 
                 peer.onicecandidate = event => {
                     if (
@@ -277,27 +308,14 @@ if (peer.addEventListener) {
                     }
                 });
 
-                socket.on('call:unavailable', () => {
-                    if (mounted) {
-                        setError('This user is offline or unavailable.');
-                        finishCall(false);
-                    }
+                const onSignal = (event, handler) => socket.on(event, data => {
+                    if (!matches(data)) return;
+                    signalChain = signalChain.then(() => {
+                        if (matches(data)) return handler(data);
+                        return undefined;
+                    }).catch(fail);
                 });
-
-                socket.on('call:rejected', () => {
-                    if (mounted) {
-                        setError('Call declined.');
-                        finishCall(false);
-                    }
-                });
-
-                socket.on('call:hangup', () => {
-                    if (mounted) {
-                        finishCall(false);
-                    }
-                });
-
-                socket.on('call:accepted', async data => {
+                onSignal('call:accepted', async data => {
                     if (
                         !mounted ||
                         data.callId !== callIdRef.current
@@ -325,7 +343,7 @@ if (peer.addEventListener) {
                     });
                 });
 
-                socket.on('webrtc:offer', async data => {
+                onSignal('webrtc:offer', async data => {
                     if (
                         !mounted ||
                         data.callId !== callIdRef.current
@@ -337,9 +355,7 @@ if (peer.addEventListener) {
                         data.fromUserId ||
                         peerUserIdRef.current;
 
-                    await peer.setRemoteDescription(
-                        new RTCSessionDescription(data.offer),
-                    );
+                    await setRemote(data.offer);
 
                     const answer =
                         await peer.createAnswer();
@@ -357,7 +373,7 @@ if (peer.addEventListener) {
                     setStatus('connecting');
                 });
 
-                socket.on('webrtc:answer', async data => {
+                onSignal('webrtc:answer', async data => {
                     if (
                         !mounted ||
                         data.callId !== callIdRef.current
@@ -365,14 +381,10 @@ if (peer.addEventListener) {
                         return;
                     }
 
-                    await peer.setRemoteDescription(
-                        new RTCSessionDescription(data.answer),
-                    );
-
-                    setStatus('connected');
+                    await setRemote(data.answer);
                 });
 
-                socket.on(
+                onSignal(
                     'webrtc:ice-candidate',
                     async data => {
                         if (
@@ -383,14 +395,18 @@ if (peer.addEventListener) {
                             return;
                         }
 
+                        if (!remoteReady) {
+                            pendingCandidates.push(data.candidate);
+                            return;
+                        }
                         try {
                             await peer.addIceCandidate(
                                 new RTCIceCandidate(
                                     data.candidate,
                                 ),
                             );
-                        } catch {
-                            // Ignore late ICE candidates.
+                        } catch (candidateError) {
+                            if (!endedRef.current) throw candidateError;
                         }
                     },
                 );
@@ -410,29 +426,18 @@ if (peer.addEventListener) {
                         callType,
                     });
                 }
-            } catch (callError) {
-                if (mounted) {
-                    setError(
-                        callError.message ||
-                        'Could not start call.',
-                    );
-
-                    Alert.alert(
-                        'Call unavailable',
-                        callError.message ||
-                        'Check camera and microphone permissions.',
-                    );
-                }
-            }
+            } catch (callError) { fail(callError); }
         };
 
         startCall();
 
         return () => {
             mounted = false;
+            clearTimeout(connectTimerRef.current);
+            backSubscription.remove();
 
             if (!endedRef.current) {
-                finishCall(false);
+                finishCall(true, false);
             }
         };
 
@@ -499,6 +504,8 @@ if (peer.addEventListener) {
             {callType === 'video' &&
                 remoteStream ? (
                 <RTCView
+                    key={remoteVideoKey}
+                    testID="remote-call-video"
                     streamURL={remoteStream.toURL()}
                     style={styles.remoteVideo}
                     objectFit="cover"
@@ -509,10 +516,11 @@ if (peer.addEventListener) {
             )}
 
             {callType === 'video' &&
-                localStream ? (
+                localStream && cameraOn ? (
                 <RTCView
+                    testID="local-call-video"
                     streamURL={localStream.toURL()}
-                    style={[styles.localVideo, { backgroundColor: theme.surfaceAlt }]}
+                    style={styles.localVideo}
                     objectFit="cover"
                     mirror
                     zOrder={1}
@@ -538,6 +546,9 @@ if (peer.addEventListener) {
                     ]}>
                     {statusText}
                 </Text>
+                {callType === 'video' && status === 'connected' && !remoteStream ? (
+                    <Text style={[styles.status, { color: theme.muted }]}>Waiting for the other person's camera...</Text>
+                ) : null}
 
                 {status !== 'connected' && !error ? (
                     <ActivityIndicator
@@ -594,18 +605,23 @@ if (peer.addEventListener) {
                     </View>
                 ) : null}
 
-                <View style={styles.controlGroup}>
+                {Platform.OS === 'android' && NativeModules.BluetoothAudioRoute?.setCallSpeaker ? <View style={styles.controlGroup}>
                     <CallButton
                         accessibilityLabel="Speaker"
+                        active={speakerOn}
+                        activeColor={theme.primary}
                         inactiveColor={theme.surfaceAlt}
-                        onPress={() => { }}>
+                        onPress={() => {
+                            NativeModules.BluetoothAudioRoute.setCallSpeaker(!speakerOn);
+                            setSpeakerOn(!speakerOn);
+                        }}>
                         <Text style={[styles.speaker, { color: theme.ink }]}>
                             ◉
                         </Text>
                     </CallButton>
 
-                    <CallLabel color={theme.muted}>Speaker</CallLabel>
-                </View>
+                    <CallLabel color={theme.muted}>{speakerOn ? 'Speaker on' : 'Speaker off'}</CallLabel>
+                </View> : null}
             </View>
 
             <View style={styles.endRow}>
@@ -638,7 +654,6 @@ const styles = StyleSheet.create({
     },
     remoteVideo: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: '#100E16',
     },
     localVideo: {
         position: 'absolute',

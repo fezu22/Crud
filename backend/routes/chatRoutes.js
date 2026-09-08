@@ -21,6 +21,16 @@ const conversationIdFor = (firstUserId, secondUserId) =>
 
 router.use(auth);
 
+router.get('/ice-servers', (req, res) => {
+  const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  const urls = String(process.env.TURN_URLS || '').split(',').map(url => url.trim()).filter(url => /^turns?:/.test(url));
+  if (urls.length && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    iceServers.push({ urls, username: process.env.TURN_USERNAME, credential: process.env.TURN_CREDENTIAL });
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json({ iceServers, relayConfigured: iceServers.length > 1 });
+});
+
 const isOnline = lastActiveAt =>
   lastActiveAt &&
   Date.now() -
