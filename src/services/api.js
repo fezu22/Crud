@@ -299,6 +299,14 @@ export async function getConversations(token) {
   return request('/chat/conversations', { token });
 }
 
+export async function deleteConversation(userId, token) {
+  return request(`/chat/${userId}/conversation`, {
+    method: 'DELETE',
+    token,
+    fallbackMessage: 'Failed to delete conversation',
+  });
+}
+
 export async function getAllUsers(token, query = '') {
   return request(
     `/chat/all-users?q=${encodeURIComponent(query)}`,

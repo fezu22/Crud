@@ -1,18 +1,34 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   BackHandler,
   FlatList,
   Keyboard,
   Modal,
-  PanResponder,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { getAdminChat, getChatUsers, getConversations } from '../services/api';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedAnimated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
+import {
+  FadeSlideIn,
+  ModalBackdrop,
+  MOTION,
+  PressableScale,
+  SkeletonBlock,
+} from '../components/motion';
+import PresenceIndicator from '../components/chat/PresenceIndicator';
+import { deleteConversation, getAdminChat, getChatUsers, getConversations } from '../services/api';
 import PremiumChatScreen from './chat/PremiumChatScreen';
 import { formatClock } from '../components/chat/MessageBubble';
 import { DocumentIcon } from '../components/chat/ChatIcons';
@@ -52,81 +68,70 @@ function isDocumentPreview(conversation) {
 }
 
 function UserPicker({ visible, users, adminContact, query, loading, onQuery, onClose, onSelect, theme }) {
-  const skeletonOpacity = useRef(new Animated.Value(0.45)).current;
-  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+  // Reanimated + Gesture Handler sheet: the drag now runs on the UI thread so
+  // it stays smooth while the user list is still loading.
+  const translateY = useSharedValue(0);
 
-  const panResponder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, gesture) => (
-      gesture.dy > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx)
-    ),
-    onPanResponderMove: (_, gesture) => {
-      sheetTranslateY.setValue(Math.max(0, gesture.dy));
-    },
-    onPanResponderRelease: (_, gesture) => {
-      if (gesture.dy > 90 || gesture.vy > 0.8) {
-        Animated.timing(sheetTranslateY, {
-          toValue: 700,
-          duration: 160,
-          useNativeDriver: true,
-        }).start(onClose);
-      } else {
-        Animated.spring(sheetTranslateY, {
-          toValue: 0,
-          tension: 70,
-          friction: 10,
-          useNativeDriver: true,
-        }).start();
-      }
-    },
-  })).current;
-
-  useEffect(() => {
-    if (visible) sheetTranslateY.setValue(0);
-  }, [sheetTranslateY, visible]);
-
-  useEffect(() => {
-    if (!loading) return undefined;
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(skeletonOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.timing(skeletonOpacity, { toValue: 0.45, duration: 700, useNativeDriver: true }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [loading, skeletonOpacity]);
-
-  const closePicker = () => {
+  const closePicker = useCallback(() => {
     onClose();
     Keyboard.dismiss();
-  };
+  }, [onClose]);
+
+  const panGesture = Gesture.Pan()
+    .activeOffsetY(10)
+    .failOffsetX([-20, 20])
+    .onChange(event => {
+      translateY.value = Math.max(0, translateY.value + event.changeY);
+    })
+    .onEnd(event => {
+      if (translateY.value > 90 || event.velocityY > 800) {
+        translateY.value = withTiming(700, { duration: 180 }, finished => {
+          if (finished) runOnJS(closePicker)();
+        });
+      } else {
+        translateY.value = withSpring(0, MOTION.softSpring);
+      }
+    });
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  useEffect(() => {
+    if (visible) translateY.value = 0;
+  }, [translateY, visible]);
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={closePicker}>
-      <View className="flex-1 justify-end bg-black/60" style={vars({
-        '--color-canvas': theme.background, '--color-surface': theme.surfaceAlt,
-        '--color-ink': theme.ink, '--color-muted': theme.muted, '--color-line': theme.line,
-      })}>
-        <Animated.View
-          style={{ transform: [{ translateY: sheetTranslateY }], minHeight: '65%', backgroundColor: theme.background }}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+      <ModalBackdrop
+        visible={visible}
+        className="flex-1 justify-end bg-black/60"
+        style={vars({
+          '--color-canvas': theme.background, '--color-surface': theme.surfaceAlt,
+          '--color-ink': theme.ink, '--color-muted': theme.muted, '--color-line': theme.line,
+        })}>
+        <ReanimatedAnimated.View
+          style={[{ minHeight: '65%', backgroundColor: theme.background }, sheetStyle]}
           className="max-h-[86%] rounded-t-[28px] bg-canvas px-5 pb-7 pt-3">
-          <View className="mb-4 items-center py-3" {...panResponder.panHandlers}>
-            <View className="h-1 w-10 rounded-full bg-line" />
-          </View>
+          <GestureDetector gesture={panGesture}>
+            <View className="mb-4 items-center py-3">
+              <View className="h-1 w-10 rounded-full bg-line" />
+            </View>
+          </GestureDetector>
           <View className="mb-4 flex-row items-center justify-between">
             {loading ? (
-              <Animated.View style={{ opacity: skeletonOpacity, backgroundColor: theme.surfaceAlt }} className="h-7 w-28 rounded-lg" />
+              <SkeletonBlock color={theme.surfaceAlt} className="h-7 w-28 rounded-lg" style={{ height: 28, width: 112 }} />
             ) : (
               <Text className="text-2xl font-extrabold text-ink">New chat</Text>
             )}
-            {
-              <TouchableOpacity onPressIn={closePicker} hitSlop={12} accessibilityLabel="Close new chat">
+            {/* onPress (not onPressIn) so a scroll or stray touch cannot close the sheet. */}
+            <PressableScale onPress={closePicker} hitSlop={12} accessibilityLabel="Close new chat">
               <Text className="text-2xl text-muted">×</Text>
-              </TouchableOpacity>
-            }
+            </PressableScale>
           </View>
           {loading ? (
-            <Animated.View style={{ opacity: skeletonOpacity, backgroundColor: theme.surfaceAlt }} className="mb-3 h-12 rounded-2xl" />
+            <SkeletonBlock color={theme.surfaceAlt} style={{ height: 48, borderRadius: 16, marginBottom: 12 }} />
           ) : (
             <TextInput
               className="mb-3 h-12 rounded-2xl border border-line bg-surface px-4 text-ink"
@@ -156,44 +161,49 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
             </TouchableOpacity>
           ) : null}
           {loading ? (
-            <Animated.View style={{ opacity: skeletonOpacity }} className="py-2">
+            <View className="py-2">
               {[0, 1, 2, 3].map(index => (
                 <View key={index} className="mb-3 flex-row items-center border-b border-line py-3">
-                  <View className="mr-3 h-12 w-12 rounded-full bg-surface" />
+                  <SkeletonBlock color={theme.surfaceAlt} style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12 }} />
                   <View className="flex-1">
-                    <View className="mb-2 h-4 w-32 rounded-full bg-surface" />
-                    <View className="h-3 w-24 rounded-full bg-surface" />
+                    <SkeletonBlock color={theme.surfaceAlt} style={{ width: 128, height: 16, borderRadius: 8, marginBottom: 8 }} />
+                    <SkeletonBlock color={theme.surfaceAlt} style={{ width: 96, height: 12, borderRadius: 6 }} />
                   </View>
-                  <View className="h-5 w-5 rounded-full bg-surface" />
+                  <SkeletonBlock color={theme.surfaceAlt} style={{ width: 20, height: 20, borderRadius: 10 }} />
                 </View>
               ))}
-            </Animated.View>
+            </View>
           ) : (
             <FlatList
               data={users}
               keyboardShouldPersistTaps="handled"
               keyExtractor={item => String(item.id)}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  className="flex-row items-center border-b border-line py-3"
-                  onPress={() => onSelect(item)}
-                  accessibilityLabel={`Chat with ${item.name || 'user'}`}>
-                  <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.separatorBg }}>
-                    <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.name)}</Text>
-                  </View>
-                  <View className="flex-1">
-                    <View className="flex-row items-center">
-                      <View
-                        className={`mr-2 h-2 w-2 rounded-full ${item.online ? 'bg-[#3B82F6]' : 'bg-[#EF4444]'}`}
-                      />
-                      <Text className="font-bold text-ink">{item.name || 'Medi user'}</Text>
+              renderItem={({ item, index }) => (
+                <FadeSlideIn index={index}>
+                  <PressableScale
+                    className="flex-row items-center border-b border-line py-3"
+                    onPress={() => onSelect(item)}
+                    accessibilityLabel={`Chat with ${item.name || 'user'}`}>
+                    <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.separatorBg }}>
+                      <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.name)}</Text>
                     </View>
-                    <Text className="mt-1 text-xs text-muted">
-                      {item.online ? 'Online' : item.email || 'Available to chat'}
-                    </Text>
-                  </View>
-                  <Text className="text-2xl text-brand">›</Text>
-                </TouchableOpacity>
+                    <View className="flex-1">
+                      <View className="flex-row items-center">
+                        <PresenceIndicator
+                          online={Boolean(item.online)}
+                          theme={theme}
+                          size={8}
+                          style={{ marginRight: 8 }}
+                        />
+                        <Text className="font-bold text-ink">{item.name || 'Medi user'}</Text>
+                      </View>
+                      <Text className="mt-1 text-xs text-muted">
+                        {item.online ? 'Online' : item.lastSeenAt ? `Last seen ${new Date(item.lastSeenAt).toLocaleString()}` : item.email || 'Available to chat'}
+                      </Text>
+                    </View>
+                    <Text className="text-2xl text-brand">›</Text>
+                  </PressableScale>
+                </FadeSlideIn>
               )}
               ListEmptyComponent={
                 <Text className="py-10 text-center text-muted">
@@ -202,8 +212,9 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
               }
             />
           )}
-        </Animated.View>
-      </View>
+        </ReanimatedAnimated.View>
+      </ModalBackdrop>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -283,15 +294,15 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
       const id = String(event?.userId || event?.fromUserId || '');
       if (!id) return;
       setPickerUsers(current => current.map(item => (
-        String(item.id) === id ? { ...item, online: Boolean(event.online) } : item
+        String(item.id) === id ? { ...item, online: Boolean(event.online), lastSeenAt: event.lastSeenAt || item.lastSeenAt } : item
       )));
       setConversations(current => current.map(item => (
         String(item.user?.id) === id
-          ? { ...item, user: { ...item.user, online: Boolean(event.online) } }
+          ? { ...item, user: { ...item.user, online: Boolean(event.online), lastSeenAt: event.lastSeenAt || item.user.lastSeenAt } }
           : item
       )));
       setAdminContact(current => current && String(current.id) === id
-        ? { ...current, online: Boolean(event.online) }
+        ? { ...current, online: Boolean(event.online), lastSeenAt: event.lastSeenAt || current.lastSeenAt }
         : current);
     };
     socket.on('presence:update', updatePresence);
@@ -439,7 +450,23 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
                   ) : null}
                 </View>
               </View>
-              <Text className="text-2xl text-brand">›</Text>
+              <View className="items-center">
+                <TouchableOpacity
+                  onPress={() => Alert.alert('Delete chat?', `Remove this chat with ${item.user.name || 'this user'} from your recent chats?`, [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Delete', style: 'destructive', onPress: async () => {
+                      try {
+                        await deleteConversation(item.user.id, token);
+                        setConversations(current => current.filter(row => String(row.user?.id) !== String(item.user.id)));
+                      } catch (error) { onErrorRef.current?.(error); }
+                    } },
+                  ])}
+                  hitSlop={10}
+                  accessibilityLabel={`Delete chat with ${item.user.name || 'user'}`}>
+                  <Text className="text-xl text-danger">×</Text>
+                </TouchableOpacity>
+                <Text className="text-2xl text-brand">›</Text>
+              </View>
             </TouchableOpacity>
           )}
         />

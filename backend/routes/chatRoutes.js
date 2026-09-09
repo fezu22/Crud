@@ -43,6 +43,7 @@ const publicUser = u => ({
   email: u.email,
   role: u.role,
   online: isOnline(u.lastActiveAt),
+  lastSeenAt: u.lastActiveAt || null,
 });
 
 const previewText = message => {
@@ -554,6 +555,29 @@ router.get(
   },
 );
 
+// Hides the complete conversation for the current user. Messages remain
+// available to the other participant, just like "Delete for me" in chat apps.
+router.delete('/:userId/conversation', async (req, res, next) => {
+  try {
+    const other = await User.findById(req.params.userId).select('_id');
+    if (!other || String(other._id) === String(req.user._id)) {
+      return res.status(404).json({ message: 'Chat recipient not found' });
+    }
+    const conversationId = conversationIdFor(req.user._id, other._id);
+    const result = await ChatMessage.updateMany(
+      { conversationId, $or: [{ sender: req.user._id }, { recipient: req.user._id }, { receiver: req.user._id }] },
+      { $addToSet: { deletedFor: req.user._id } },
+    );
+    req.app.get('io')?.to(`user:${String(req.user._id)}`).emit('chat:conversation-hidden', {
+      conversationId,
+      userId: String(other._id),
+    });
+    return res.json({ message: 'Conversation deleted for you', modifiedCount: result.modifiedCount || 0 });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.delete(
   '/:userId/messages',
   async (req, res, next) => {
@@ -753,7 +777,7 @@ router.post(
     );
     let messageType = body.messageType || body.type || 'text';
     if (messageType === 'voice') messageType = 'audio';
-    if (!['text', 'image', 'video', 'audio'].includes(messageType)) {
+    if (!['text', 'image', 'video', 'audio', 'call'].includes(messageType)) {
       messageType = inferAttachmentType(body);
     }
 
@@ -764,15 +788,19 @@ router.post(
     const attachmentSize = Number(body.attachmentSize ?? body.fileSize ?? 0);
     const duration = Number(body.duration || 0);
 
+    // Call log rows carry neither text nor an attachment, so they skip the
+    // text/attachment validation below.
+    const isCallLog = messageType === 'call';
+
     if (messageType === 'text' && !text) {
       return res.status(400).json({ message: 'Message cannot be empty' });
     }
 
-    if (messageType !== 'text' && !attachmentUrl) {
+    if (!isCallLog && messageType !== 'text' && !attachmentUrl) {
       return res.status(400).json({ message: 'Attachment URL is required' });
     }
 
-    if (messageType !== 'text' && !/^https:\/\//i.test(attachmentUrl)) {
+    if (!isCallLog && messageType !== 'text' && !/^https:\/\//i.test(attachmentUrl)) {
       return res.status(400).json({ message: 'Attachment URL must be a secure cloud URL' });
     }
 
@@ -783,6 +811,8 @@ router.post(
       conversationId,
       type: messageType === 'audio' ? 'voice' : messageType,
       messageType,
+      callDuration: isCallLog ? Math.max(0, Number(body.callDuration || 0)) : 0,
+      callType: body.callType === 'video' ? 'video' : 'voice',
       text,
       attachmentUrl,
       fileName: attachmentName,

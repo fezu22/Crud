@@ -56,6 +56,7 @@ import DocumentPreviewModal from '../../components/chat/DocumentPreviewModal';
 import ImageMessage from '../../components/chat/ImageMessage';
 import ImageViewerModal from '../../components/chat/ImageViewerModal';
 import MessageBubble from '../../components/chat/MessageBubble';
+import CallEventRow from '../../components/chat/CallEventRow';
 import VoiceMessageBubble, {
   seededWaveform,
 } from '../../components/chat/VoiceMessageBubble';
@@ -66,6 +67,7 @@ import {
   SendIcon,
 } from '../../components/chat/ChatIcons';
 
+import { FadeSlideIn, PressableScale, SkeletonBlock } from '../../components/motion';
 import { getChatTheme } from '../../theme/chatTheme';
 import { makeId } from './mockChatData';
 import RealCallScreen from './RealCallScreen';
@@ -123,6 +125,7 @@ function buildRows(messages) {
       const hasDocument =
         (type === 'document' || type === 'pdf') &&
         Boolean(message?.fileName || message?.attachmentUrl);
+      const isCallEvent = type === 'call';
       const hasVoice = (
         type === 'voice' ||
         type === 'audio' ||
@@ -131,7 +134,7 @@ function buildRows(messages) {
         Boolean(message?.audioUrl)
       ) && Boolean(message?.attachmentUrl || message?.audioUrl || message?.uri);
 
-      return hasText || hasMedia || hasDocument || hasVoice;
+      return isCallEvent || hasText || hasMedia || hasDocument || hasVoice;
     })
     .forEach((message, index, visibleMessages) => {
       const previous = visibleMessages[index - 1];
@@ -238,28 +241,15 @@ function isDocumentFile(file) {
 }
 
 function ChatSkeleton({ theme, contact }) {
-  const pulse = useRef(new Animated.Value(0.45)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.45, duration: 850, useNativeDriver: true }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [pulse]);
-
-  const block = style => (
-    <Animated.View style={[styles.skeletonBlock, style, { opacity: pulse }]} />
-  );
+  // Theme-aware shimmer blocks: the old skeleton hardcoded dark colors and
+  // was invisible on the light theme.
+  const block = style => <SkeletonBlock theme={theme} style={[styles.skeletonBlock, style]} />;
 
   return (
     <View style={[styles.fullPageLoading, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={theme.barStyle} backgroundColor={theme.background} />
       <ChatBackground theme={theme} />
-      <View style={styles.skeletonHeader}>
+      <View style={[styles.skeletonHeader, { borderBottomColor: theme.line }]}>
         {block(styles.skeletonBack)}
         <View style={styles.skeletonProfile}>
           {block(styles.skeletonName)}
@@ -284,7 +274,7 @@ function ChatSkeleton({ theme, contact }) {
           {block(styles.skeletonLineShort)}
         </View>
       </View>
-      <View style={styles.skeletonComposer}>
+      <View style={[styles.skeletonComposer, { borderTopColor: theme.line }]}>
         {block(styles.skeletonAttach)}
         {block(styles.skeletonInput)}
         {block(styles.skeletonAttach)}
@@ -307,6 +297,7 @@ export default function PremiumChatScreen({
   const [loading, setLoading] = useState(true);
   const [sendingText, setSendingText] = useState(false);
   const [contactOnline, setContactOnline] = useState(Boolean(contact?.online));
+  const [contactLastSeen, setContactLastSeen] = useState(contact?.lastSeenAt || null);
   const [showJump, setShowJump] = useState(false);
   const [attachmentOpen, setAttachmentOpen] =
     useState(false);
@@ -374,6 +365,7 @@ export default function PremiumChatScreen({
     const onPresenceUpdate = event => {
       if (String(event?.userId || '') === String(contactId)) {
         setContactOnline(Boolean(event.online));
+        if (event.lastSeenAt) setContactLastSeen(event.lastSeenAt);
       }
     };
     socket.on('presence:update', onPresenceUpdate);
@@ -592,6 +584,39 @@ export default function PremiumChatScreen({
       distanceFromBottom < 140;
   };
 
+  /**
+   * Closes the call UI and drops a "Call ended • 4 min 32 sec" row into the
+   * transcript. RealCallScreen reports the real connected duration, so missed
+   * and cancelled calls are labelled correctly too.
+   */
+  const handleCallEnded = summary => {
+    const call = activeCall;
+    setActiveCall(null);
+
+    if (!call) return;
+
+    const durationSeconds = Math.max(0, Math.round(Number(summary?.durationSeconds) || 0));
+
+    setMessages(current => [
+      ...current,
+      {
+        _id: makeId(),
+        type: 'call',
+        sender: call.incomingCall ? 'them' : 'me',
+        createdAt: new Date().toISOString(),
+        callType: summary?.callType || call.type || 'voice',
+        callDuration: durationSeconds,
+        callConnected: Boolean(summary?.connected),
+        callOutgoing: !call.incomingCall,
+        status: 'read',
+        local: true,
+      },
+    ]);
+
+    nearBottom.current = true;
+    requestAnimationFrame(() => scrollToBottom(true));
+  };
+
   if (activeCall) {
     return (
       <RealCallScreen
@@ -604,7 +629,7 @@ export default function PremiumChatScreen({
         incomingCall={
           activeCall.incomingCall
         }
-        onEnd={() => setActiveCall(null)}
+        onEnd={handleCallEnded}
       />
     );
   }
@@ -1228,10 +1253,28 @@ export default function PremiumChatScreen({
     return null;
   };
 
-  const renderItem = ({ item }) => {
+  const renderItem = ({ item, index }) => {
+    if (item.kind === 'message' && item.message?.type === 'call') {
+      return (
+        <CallEventRow
+          index={index}
+          theme={theme}
+          event={{
+            durationSeconds: item.message.callDuration ?? item.message.duration ?? 0,
+            connected:
+              item.message.callConnected ??
+              Boolean(item.message.callDuration || item.message.duration),
+            callType: item.message.callType || 'voice',
+            outgoing: item.message.callOutgoing ?? item.message.sender === 'me',
+            createdAt: item.message.createdAt,
+          }}
+        />
+      );
+    }
+
     if (item.kind === 'day') {
       return (
-        <View style={styles.dayRow}>
+        <FadeSlideIn index={index} distance={8} style={styles.dayRow}>
           <View
             style={[
               styles.dayPill,
@@ -1250,12 +1293,13 @@ export default function PremiumChatScreen({
               {dayLabel(item.date)}
             </Text>
           </View>
-        </View>
+        </FadeSlideIn>
       );
     }
 
     return (
       <MessageBubble
+        index={index}
         message={item.message}
         theme={theme}
         mine={
@@ -1316,7 +1360,7 @@ export default function PremiumChatScreen({
         ) : (
           <ChatHeader
             theme={theme}
-            contact={{ ...contact, online: contactOnline }}
+            contact={{ ...contact, online: contactOnline, lastSeenAt: contactLastSeen }}
             onBack={onBack}
             onVoiceCall={() => setActiveCall({ type: 'voice' })}
             onVideoCall={() => setActiveCall({ type: 'video' })}
@@ -1334,7 +1378,7 @@ export default function PremiumChatScreen({
               scrollToBottom();
             }
           }}
-          scrollEventThrottle={60}
+          scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={
             styles.listContent
@@ -1401,7 +1445,13 @@ export default function PremiumChatScreen({
             },
           ]}>
           {editingMessage ? (
-            <View style={styles.editingBar}>
+            <FadeSlideIn
+              from="bottom"
+              distance={10}
+              style={[
+                styles.editingBar,
+                { backgroundColor: theme.surfaceAlt, borderColor: theme.line, borderWidth: 1 },
+              ]}>
               <Text style={[styles.editingText, { color: theme.primary }]}>Editing message</Text>
               <TouchableOpacity
                 onPress={() => {
@@ -1411,7 +1461,7 @@ export default function PremiumChatScreen({
                 accessibilityLabel="Cancel edit">
                 <Text style={[styles.editingCancel, { color: theme.muted }]}>Cancel</Text>
               </TouchableOpacity>
-            </View>
+            </FadeSlideIn>
           ) : null}
           <TouchableOpacity
             style={[styles.composerButton, { backgroundColor: theme.surfaceAlt, borderColor: theme.line, borderWidth: 1, borderRadius: 14 }]}
@@ -1691,7 +1741,6 @@ const styles = StyleSheet.create({
   },
 
   skeletonBlock: {
-    backgroundColor: '#302B43',
     borderRadius: 10,
   },
 
@@ -1820,7 +1869,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
-    backgroundColor: '#F1EEFF',
   },
 
   editingText: {

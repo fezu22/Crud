@@ -117,7 +117,7 @@ io.on('connection', socket => {
 
   activeSockets.set(userId, (activeSockets.get(userId) || 0) + 1);
   User.updateOne({ _id: socket.user._id }, { lastActiveAt: new Date() }).catch(() => {});
-  io.emit('presence:update', { userId, online: true });
+  io.emit('presence:update', { userId, online: true, lastSeenAt: new Date().toISOString() });
 
   socket.join(`user:${userId}`);
 
@@ -171,18 +171,6 @@ io.on('connection', socket => {
     if (typeof acknowledge === 'function') acknowledge({ ok: true });
   });
 
-  socket.on('webrtc:offer', payload => {
-    forwardToUser('webrtc:offer', payload);
-  });
-
-  socket.on('webrtc:answer', payload => {
-    forwardToUser('webrtc:answer', payload);
-  });
-
-  socket.on('webrtc:ice-candidate', payload => {
-    forwardToUser('webrtc:ice-candidate', payload);
-  });
-
   socket.on('disconnect', () => {
     const remaining = (activeSockets.get(userId) || 1) - 1;
     if (remaining > 0) {
@@ -190,7 +178,7 @@ io.on('connection', socket => {
     } else {
       activeSockets.delete(userId);
       User.updateOne({ _id: socket.user._id }, { lastActiveAt: null }).catch(() => {});
-      io.emit('presence:update', { userId, online: false });
+      io.emit('presence:update', { userId, online: false, lastSeenAt: new Date().toISOString() });
     }
     console.log(`Call socket disconnected: ${socket.user.email || userId}`);
   });

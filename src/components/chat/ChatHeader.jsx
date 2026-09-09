@@ -1,87 +1,124 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { PhoneIcon, VideoIcon } from './ChatIcons';
+import PresenceIndicator from './PresenceIndicator';
+import { PressableScale } from '../motion';
+
+function initialsOf(name) {
+  return String(name || 'U')
+    .trim()
+    .split(/\s+/)
+    .map(part => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
 
 /**
- * Chat header matched to the Faraz screen: purple Back text on the left,
- * bold contact name with a gray status dot and Offline label, voice and
- * video call icons on the right, thin divider underneath.
+ * Chat header: back button, avatar, contact name with an animated presence
+ * indicator, and the two call actions.
  */
 export default function ChatHeader({ theme, contact, onBack, onVoiceCall, onVideoCall }) {
+  const online = Boolean(contact?.online);
+  const lastSeen = contact?.lastSeenAt ? new Date(contact.lastSeenAt) : null;
+  const lastSeenText = online
+    ? 'Online'
+    : lastSeen && !Number.isNaN(lastSeen.getTime())
+      ? `Last seen ${lastSeen.toLocaleDateString() === new Date().toLocaleDateString() ? `today at ${lastSeen.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : lastSeen.toLocaleDateString([], { day: 'numeric', month: 'short' })}`
+      : 'Offline';
+
   return (
     <View
       style={[
         styles.header,
         { backgroundColor: theme.background, borderBottomColor: theme.line },
       ]}>
-      <TouchableOpacity onPress={onBack} hitSlop={10} accessibilityLabel="Back to messages" style={[styles.action, { backgroundColor: theme.surfaceAlt, marginRight: 12 }]}>
-        <Text style={{ color: theme.ink, fontSize: 23 }}>{'<'}</Text>
-      </TouchableOpacity>
+      <PressableScale
+        onPress={onBack}
+        hitSlop={10}
+        accessibilityLabel="Back to messages"
+        style={[styles.action, styles.backAction, { backgroundColor: theme.surfaceAlt, borderColor: theme.line }]}>
+        <Text style={[styles.backGlyph, { color: theme.ink }]}>{'\u2039'}</Text>
+      </PressableScale>
+
       <View style={[styles.avatar, { backgroundColor: theme.separatorBg, borderColor: theme.primary }]}>
-        <Text style={{ color: theme.primaryLight, fontWeight: '800' }}>{String(contact.name || 'U').trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2)}</Text>
+        <Text style={[styles.avatarText, { color: theme.primaryLight }]}>{initialsOf(contact?.name)}</Text>
       </View>
+
       <View style={styles.identity}>
         <Text style={[styles.name, { color: theme.ink }]} numberOfLines={1}>
-          {contact.name}
+          {contact?.name || 'Medi user'}
         </Text>
         <View style={styles.statusRow}>
-          <View style={[styles.statusDot, { backgroundColor: contact.online ? theme.onlineDot : theme.offlineDot }]} />
-          <Text style={[styles.statusText, { color: theme.muted }]}>
-            {contact.online ? 'Active now' : 'Offline'}
-          </Text>
+          <PresenceIndicator
+            online={online}
+            size={8}
+            onlineColor={theme.onlineDot}
+            offlineColor={theme.offlineDot}
+          />
+          <Text
+            style={[
+              styles.statusText,
+              { color: online ? theme.onlineDot : theme.muted },
+            ]}>{lastSeenText}</Text>
         </View>
       </View>
 
-      <TouchableOpacity
-        style={[styles.action, { backgroundColor: theme.separatorBg, borderColor: theme.line, borderWidth: 1 }]}
+      <PressableScale
+        style={[styles.action, { backgroundColor: theme.separatorBg, borderColor: theme.line }]}
         onPress={onVoiceCall}
         hitSlop={8}
         accessibilityLabel="Voice call">
         <PhoneIcon color={theme.primaryLight} size={18} />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.action, { backgroundColor: theme.separatorBg, borderColor: theme.line, borderWidth: 1 }]}
+      </PressableScale>
+      <PressableScale
+        style={[styles.action, { backgroundColor: theme.separatorBg, borderColor: theme.line }]}
         onPress={onVideoCall}
         hitSlop={8}
         accessibilityLabel="Video call">
         <VideoIcon color={theme.primaryLight} size={18} />
-      </TouchableOpacity>
+      </PressableScale>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  avatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
     paddingBottom: 14,
     borderBottomWidth: 1,
   },
-  back: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginRight: 18,
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarText: {
+    fontWeight: '800',
+    fontSize: 14,
   },
   identity: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 8,
   },
   name: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
+    letterSpacing: 0.1,
   },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 3,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 6,
+    marginTop: 2,
+    height: 18,
   },
   statusText: {
     fontSize: 12,
@@ -91,8 +128,19 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 6,
+    marginLeft: 8,
+  },
+  backAction: {
+    marginLeft: 0,
+    marginRight: 10,
+  },
+  backGlyph: {
+    fontSize: 26,
+    lineHeight: 30,
+    fontWeight: '600',
+    marginTop: -2,
   },
 });
