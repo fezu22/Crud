@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import ReanimatedAnimated, {
   runOnJS,
   useAnimatedStyle,
@@ -103,7 +103,6 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={closePicker}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
       <ModalBackdrop
         visible={visible}
         className="flex-1 justify-end bg-black/60"
@@ -214,7 +213,6 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
           )}
         </ReanimatedAnimated.View>
       </ModalBackdrop>
-      </GestureHandlerRootView>
     </Modal>
   );
 }

@@ -6,7 +6,7 @@ import { createCallSocket, getActiveCallId } from '../../services/callService';
 import { getChatTheme } from '../../theme/chatTheme';
 
 // Keep ringing available across tabs, independently of message notifications.
-export default function IncomingCallHost({ token, themeMode }) {
+export default function IncomingCallHost({ token, themeMode, user }) {
   const [call, setCall] = useState(null);
   const [answered, setAnswered] = useState(false);
   const callRef = useRef(null);
@@ -59,7 +59,7 @@ export default function IncomingCallHost({ token, themeMode }) {
         {answered && call ? (
           <RealCallScreen key={call.callId} token={token} incomingCall={call}
             contact={{ id: call.fromUserId, name: call.fromName }}
-            callType={call.callType === 'video' ? 'video' : 'voice'} themeMode={themeMode} onEnd={close} />
+            callType={call.callType === 'video' ? 'video' : 'voice'} currentUser={user} themeMode={themeMode} onEnd={close} />
         ) : (
           <View style={styles.ringing}>
             <View style={[styles.avatar, { backgroundColor: theme.separatorBg }]}>

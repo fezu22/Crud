@@ -591,7 +591,7 @@ export default function App() {
         <AlertNotificationRoot theme={preferences.theme}>
           <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
             <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
-              <IncomingCallHost key={token} token={token} themeMode={preferences.theme} />
+              <IncomingCallHost key={token} token={token} user={user} themeMode={preferences.theme} />
               <StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} />
               <AdminDashboardScreen token={token} user={user} themeMode={preferences.theme} onLogout={logout} onError={error => showError('Chat error', error)} />
               <ConfirmDialog config={confirm} onCancel={closeConfirm} />
@@ -607,7 +607,7 @@ export default function App() {
       <AlertNotificationRoot theme={preferences.theme}>
       <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
         <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
-          <IncomingCallHost key={token} token={token} themeMode={preferences.theme} />
+            <IncomingCallHost key={token} token={token} user={user} themeMode={preferences.theme} />
           <StatusBar
             barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'}
             backgroundColor={preferences.theme === 'dark' ? '#12111a' : '#ffffff'}

@@ -625,6 +625,7 @@ export default function PremiumChatScreen({
         }
         token={token}
         callType={activeCall.type}
+        currentUser={user}
         themeMode={themeMode}
         incomingCall={
           activeCall.incomingCall

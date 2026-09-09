@@ -210,6 +210,7 @@ export default function ChatThread({ person, user, token, onBack, onError }) {
         contact={activeCall.contact}
         token={token}
         callType={activeCall.type}
+        currentUser={user}
         incomingCall={activeCall.incomingCall}
         onEnd={() => setActiveCall(null)}
       />

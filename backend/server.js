@@ -16,7 +16,7 @@ const authRoutes = require('./routes/authRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const chatRoutes = require('./routes/chatRoutes');
-const agoraRoutes = require('./routes/agoraRoutes');
+const zegoRoutes = require('./routes/zegoRoutes');
 
 const {
   ensureConfiguredAdminAtStartup,
@@ -67,7 +67,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/chat', chatRoutes);
-app.use('/api/agora', agoraRoutes);
+app.use('/api/zego', zegoRoutes);
 
 app.use((err, req, res, next) => {
   console.error('Unhandled Server Error:', err);

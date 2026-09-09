@@ -10,7 +10,6 @@ module.exports = {
   moduleNameMapper: {
     '\\.(css)$': '<rootDir>/test/styleMock.js',
     '^react-native-nitro-sound$': '<rootDir>/test/mocks/nitroSound.js',
-    '^react-native-webrtc$': '<rootDir>/test/mocks/reactNativeWebrtc.js',
     '^react-native-blob-util$': '<rootDir>/test/mocks/reactNativeBlobUtil.js',
   },
 };
