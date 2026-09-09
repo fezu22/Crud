@@ -81,3 +81,6 @@ backend/.env
 .vscode/ 
 *.log 
 yarn 
+.vscode/ 
+*.log 
+yarn 
