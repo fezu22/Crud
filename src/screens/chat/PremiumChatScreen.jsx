@@ -54,7 +54,6 @@ import DocumentPreviewModal from '../../components/chat/DocumentPreviewModal';
 import ImageMessage from '../../components/chat/ImageMessage';
 import ImageViewerModal from '../../components/chat/ImageViewerModal';
 import MessageBubble from '../../components/chat/MessageBubble';
-import CallEventRow from '../../components/chat/CallEventRow';
 import VoiceMessageBubble, {
   seededWaveform,
 } from '../../components/chat/VoiceMessageBubble';
@@ -67,7 +66,6 @@ import {
 
 import { FadeSlideIn, SkeletonBlock } from '../../components/motion';
 import { getChatTheme } from '../../theme/chatTheme';
-import { makeId } from './mockChatData';
 import {
   loadCachedMessages,
   saveCachedMessages,
@@ -86,6 +84,10 @@ function sameDay(firstDate, secondDate) {
     first.getMonth() === second.getMonth() &&
     first.getDate() === second.getDate()
   );
+}
+
+function makeId() {
+  return `local-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 }
 
 function dayLabel(dateString) {
@@ -122,7 +124,6 @@ function buildRows(messages) {
       const hasDocument =
         (type === 'document' || type === 'pdf') &&
         Boolean(message?.fileName || message?.attachmentUrl);
-      const isCallEvent = type === 'call';
       const hasVoice = (
         type === 'voice' ||
         type === 'audio' ||
@@ -131,7 +132,7 @@ function buildRows(messages) {
         Boolean(message?.audioUrl)
       ) && Boolean(message?.attachmentUrl || message?.audioUrl || message?.uri);
 
-      return isCallEvent || hasText || hasMedia || hasDocument || hasVoice;
+      return hasText || hasMedia || hasDocument || hasVoice;
     })
     .forEach((message, index, visibleMessages) => {
       const previous = visibleMessages[index - 1];
@@ -1192,24 +1193,6 @@ export default function PremiumChatScreen({
   };
 
   const renderItem = ({ item, index }) => {
-    if (item.kind === 'message' && item.message?.type === 'call') {
-      return (
-        <CallEventRow
-          index={index}
-          theme={theme}
-          event={{
-            durationSeconds: item.message.callDuration ?? item.message.duration ?? 0,
-            connected:
-              item.message.callConnected ??
-              Boolean(item.message.callDuration || item.message.duration),
-            callType: item.message.callType || 'voice',
-            outgoing: item.message.callOutgoing ?? item.message.sender === 'me',
-            createdAt: item.message.createdAt,
-          }}
-        />
-      );
-    }
-
     if (item.kind === 'day') {
       return (
         <FadeSlideIn index={index} distance={8} style={styles.dayRow}>
@@ -1557,12 +1540,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  loadingContent: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   loadingText: {
     textAlign: 'center',
     marginTop: 8,
@@ -1897,67 +1874,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  incomingOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: 'rgba(0,0,0,0.68)',
-  },
-
-  incomingCard: {
-    width: '100%',
-    borderRadius: 24,
-    padding: 24,
-    backgroundColor: '#211F2B',
-    borderWidth: 1,
-    borderColor: '#3A3450',
-  },
-
-  incomingEyebrow: {
-    color: '#8B73FF',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.4,
-  },
-
-  incomingName: {
-    color: '#F5F3FA',
-    fontSize: 25,
-    fontWeight: '900',
-    marginTop: 8,
-  },
-
-  incomingHint: {
-    color: '#A8A4B7',
-    marginTop: 6,
-    fontSize: 14,
-  },
-
-  incomingActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 22,
-  },
-
-  incomingButton: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: 14,
-    paddingVertical: 13,
-  },
-
-  declineButton: {
-    backgroundColor: '#DC2626',
-  },
-
-  acceptButton: {
-    backgroundColor: '#47B8A5',
-  },
-
-  incomingButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 15,
-  },
 });

@@ -73,7 +73,7 @@ export default function ChatHeader({ theme, contact, currentUserId, onBack }) {
       <ZegoSendCallInvitationButton
         invitees={invitee}
         isVideoCall={false}
-        text="☎"
+        text={'\u260E'}
         textColor={theme.primaryLight}
         fontSize={18}
         width={38}
@@ -88,7 +88,7 @@ export default function ChatHeader({ theme, contact, currentUserId, onBack }) {
       <ZegoSendCallInvitationButton
         invitees={invitee}
         isVideoCall
-        text="▣"
+        text={'\u25A3'}
         textColor={theme.primaryLight}
         fontSize={18}
         width={38}

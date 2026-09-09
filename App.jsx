@@ -235,6 +235,9 @@ function AppContent() {
     host: 'screen',
   });
   const profileUserId = getUserStorageId(user);
+  const zegoUserId = user?._id || user?.id;
+  const zegoUserRef = useRef(user);
+  zegoUserRef.current = user;
   const successTimeoutRef = useRef(null);
   const authGenerationRef = useRef(0);
   const notificationPromptUserRef = useRef(null);
@@ -295,10 +298,12 @@ function AppContent() {
     return () => clearInterval(id);
   }, [token]);
   useEffect(() => {
-    if (!token || !user) return undefined;
-    initializeZegoCallInvitations(token, user).catch(() => {});
+    if (!token || !zegoUserId) return undefined;
+    initializeZegoCallInvitations(token, zegoUserRef.current).catch(() => {
+      console.warn('Could not initialize call invitations.');
+    });
     return () => uninitializeZegoCallInvitations();
-  }, [token, user]);
+  }, [token, zegoUserId]);
   useEffect(() => {
     if (!token || !user || !preferences.ready || !preferences.notifications) {
       return undefined;

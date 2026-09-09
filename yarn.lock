@@ -1822,7 +1822,7 @@
   dependencies:
     nanoid "^3.3.11"
 
-"@sayem314/react-native-keep-awake@>=1.4.0":
+"@sayem314/react-native-keep-awake@^2.0.0", "@sayem314/react-native-keep-awake@>=1.4.0":
   version "2.0.0"
   resolved "https://registry.npmjs.org/@sayem314/react-native-keep-awake/-/react-native-keep-awake-2.0.0.tgz"
   integrity sha512-r+uNd4d4/cwmfrm6hoYbX22y9P+sbMrvZNfUMus8uE0JSkgppuKnEXSYUG2cHLyoWUQTCwYqzdbrGgf4eREgLw==
@@ -5959,7 +5959,7 @@ react-native-device-info@^15.0.2:
   resolved "https://registry.npmjs.org/react-native-device-info/-/react-native-device-info-15.0.2.tgz"
   integrity sha512-dd71eXG2l3Cwp66IvKNadMTB8fhU3PEjyVddI97sYan+D4bgIAUmgGDhbSOFvHcGavksb2U17kiQYaDiK2WK2g==
 
-react-native-encrypted-storage@*:
+react-native-encrypted-storage@*, react-native-encrypted-storage@^4.0.3:
   version "4.0.3"
   resolved "https://registry.npmjs.org/react-native-encrypted-storage/-/react-native-encrypted-storage-4.0.3.tgz"
   integrity sha512-0pJA4Aj2S1PIJEbU7pN/Qvf7JIJx3hFywx+i+bLHtgK0/6Zryf1V2xVsWcrD50dfiu3jY1eN2gesQ5osGxE7jA==
@@ -6017,7 +6017,7 @@ react-native-pdf@^7.0.5:
     crypto-js "4.2.0"
     deprecated-react-native-prop-types "^2.3.0"
 
-react-native-quick-base64@^3.0.0, react-native-quick-base64@^3.0.1, react-native-quick-base64@>=3.0.0:
+react-native-quick-base64@^3.0.0, react-native-quick-base64@>=3.0.0:
   version "3.0.1"
   resolved "https://registry.npmjs.org/react-native-quick-base64/-/react-native-quick-base64-3.0.1.tgz"
   integrity sha512-EjUP2U7WqKmlMmoY7XGyHomy8bM0q4+yCDCRg4ZezQ6zedYRwc7yVk4V2O/iSftKaLEzhuW98lpyPMdk1iPHXQ==
@@ -6047,7 +6047,7 @@ react-native-safe-area-context@*, react-native-safe-area-context@^5.5.2, "react-
   resolved "https://registry.npmjs.org/react-native-safe-area-context/-/react-native-safe-area-context-5.8.0.tgz"
   integrity sha512-t+ZsAVzY/wWzzx34vqGbo3/as9EEESJdbyZNL7Yg5EYX+toYMtMqFoDDCvqZUi35eeGVsXc6pAaEk4edMwbuCQ==
 
-react-native-screens@*, "react-native-screens@>= 4.0.0":
+react-native-screens@*, react-native-screens@^4.27.0, "react-native-screens@>= 4.0.0":
   version "4.27.0"
   resolved "https://registry.npmjs.org/react-native-screens/-/react-native-screens-4.27.0.tgz"
   integrity sha512-IUukKYilhKhdJqGh59BmxrAjgIO84CaOkdowEY20+RmapOAFpqS//xOIcq2iqDQ4xVoxuwCHGWhY/Tbz6lTblA==
@@ -6055,12 +6055,12 @@ react-native-screens@*, "react-native-screens@>= 4.0.0":
     react-freeze "^1.0.0"
     warn-once "^0.1.0"
 
-react-native-sound@*:
+react-native-sound@*, react-native-sound@^0.13.0:
   version "0.13.0"
   resolved "https://registry.npmjs.org/react-native-sound/-/react-native-sound-0.13.0.tgz"
   integrity sha512-SnREzaV0fmpYNuDV1Y8M7FutmaYei0pKBgpldULKKJMkoA3DBv5ppyRxY+oxRQ7HwEpt6LsonrKgM+13GH/tCw==
 
-react-native-uuid@^2.0.3:
+react-native-uuid@^2.0.3, react-native-uuid@^2.0.4:
   version "2.0.4"
   resolved "https://registry.npmjs.org/react-native-uuid/-/react-native-uuid-2.0.4.tgz"
   integrity sha512-LSJNeh559qC17fgVPBsWuTSW/OygFp2dwTcf94IQBLYft5FzIQS9pCsuT36OPvyvDOMb6yiGr6TafaJDnz9PPQ==

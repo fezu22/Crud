@@ -21,16 +21,16 @@ function generateToken04(userId, secret, effectiveSeconds = 3600) {
   body.writeBigInt64BE(BigInt(expireAt), 0);
   body.writeUInt16BE(iv.length, 8); iv.copy(body, 10);
   body.writeUInt16BE(encrypted.length, 10 + iv.length); encrypted.copy(body, 12 + iv.length);
-  return `04${body.toString('base64')}`;
+  return { token: `04${body.toString('base64')}`, expiresAt: expireAt };
 }
 
 router.get('/token', auth, (req, res) => {
   const userId = String(req.user?._id || '');
   const secret = process.env.ZEGO_SERVER_SECRET;
   if (!userId || !secret) return res.status(503).json({ message: 'ZEGOCLOUD calling is not configured.' });
-  const token = generateToken04(userId, secret);
-  if (!token) return res.status(503).json({ message: 'ZEGOCLOUD calling is not configured.' });
-  res.set('Cache-Control', 'no-store').json({ appId, token, userId, expiresAt: Math.floor(Date.now() / 1000) + 3600 });
+  const result = generateToken04(userId, secret);
+  if (!result) return res.status(503).json({ message: 'ZEGOCLOUD calling is not configured.' });
+  res.set('Cache-Control', 'no-store').json({ appId, userId, ...result });
 });
 
 module.exports = router;

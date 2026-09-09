@@ -767,7 +767,7 @@ router.post(
     );
     let messageType = body.messageType || body.type || 'text';
     if (messageType === 'voice') messageType = 'audio';
-    if (!['text', 'image', 'video', 'audio', 'call'].includes(messageType)) {
+    if (!['text', 'image', 'video', 'audio'].includes(messageType)) {
       messageType = inferAttachmentType(body);
     }
 
@@ -778,19 +778,15 @@ router.post(
     const attachmentSize = Number(body.attachmentSize ?? body.fileSize ?? 0);
     const duration = Number(body.duration || 0);
 
-    // Call log rows carry neither text nor an attachment, so they skip the
-    // text/attachment validation below.
-    const isCallLog = messageType === 'call';
-
     if (messageType === 'text' && !text) {
       return res.status(400).json({ message: 'Message cannot be empty' });
     }
 
-    if (!isCallLog && messageType !== 'text' && !attachmentUrl) {
+    if (messageType !== 'text' && !attachmentUrl) {
       return res.status(400).json({ message: 'Attachment URL is required' });
     }
 
-    if (!isCallLog && messageType !== 'text' && !/^https:\/\//i.test(attachmentUrl)) {
+    if (messageType !== 'text' && !/^https:\/\//i.test(attachmentUrl)) {
       return res.status(400).json({ message: 'Attachment URL must be a secure cloud URL' });
     }
 
@@ -801,8 +797,6 @@ router.post(
       conversationId,
       type: messageType === 'audio' ? 'voice' : messageType,
       messageType,
-      callDuration: isCallLog ? Math.max(0, Number(body.callDuration || 0)) : 0,
-      callType: body.callType === 'video' ? 'video' : 'voice',
       text,
       attachmentUrl,
       fileName: attachmentName,
