@@ -1,6 +1,6 @@
 import ZegoUIKit from '@zegocloud/zego-uikit-rn';
 import ZegoUIKitPrebuiltCallInvitationService from '@zegocloud/zego-uikit-prebuilt-call-rn';
-import ZIM from 'zego-zim-react-native';
+import * as ZIM from 'zego-zim-react-native';
 import { ZEGO_APP_ID, getZegoUserId, getZegoUserName, requestZegoToken } from './zegoService';
 
 let initializedUserId = null;
