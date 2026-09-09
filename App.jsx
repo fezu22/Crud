@@ -71,6 +71,10 @@ import {
 } from './src/storage/sessionStorage';
 import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
 import { createCallSocket } from './src/services/callService';
+import {
+  initializeZegoCallInvitations,
+  uninitializeZegoCallInvitations,
+} from './src/services/zegoCallInvitation';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -290,6 +294,11 @@ export default function App() {
     const id = setInterval(() => pingActive(token).catch(() => {}), 15000);
     return () => clearInterval(id);
   }, [token]);
+  useEffect(() => {
+    if (!token || !user) return undefined;
+    initializeZegoCallInvitations(token, user).catch(() => {});
+    return () => uninitializeZegoCallInvitations();
+  }, [token, user]);
   useEffect(() => {
     if (!token || !user || !preferences.ready || !preferences.notifications) {
       return undefined;

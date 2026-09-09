@@ -1,3 +1,6 @@
+/* eslint-env node */
+/* global BigInt */
+
 const express = require('express');
 const auth = require('../middleware/auth');
 const crypto = require('crypto');
