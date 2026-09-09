@@ -33,13 +33,9 @@ const UserSchema = new mongoose.Schema(
       minlength: [6, 'Password must be at least 6 characters long'],
     },
     encryptionSalt: { type: String, required: true, default: () => crypto.randomBytes(16).toString('base64') },
-    truecallerId: {
-      type: String,
-      sparse: true,
-    },
     authProvider: {
       type: String,
-      enum: ['email', 'phone', 'truecaller'],
+      enum: ['email', 'phone'],
       default: 'email',
     },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },

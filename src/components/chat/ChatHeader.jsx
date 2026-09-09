@@ -19,11 +19,13 @@ function initialsOf(name) {
  * Chat header: back button, avatar, contact name with an animated presence
  * indicator, and the two call actions.
  */
-export default function ChatHeader({ theme, contact, onBack }) {
+export default function ChatHeader({ theme, contact, currentUserId, onBack }) {
   const online = Boolean(contact?.online);
-  const invitee = contact?.id || contact?._id
+  const contactId = contact?.id || contact?._id;
+  const invitee = contactId
     ? [{ userID: getZegoUserId(contact), userName: getZegoUserName(contact) }]
     : [];
+  const canInvite = invitee.length > 0 && String(contactId) !== String(currentUserId);
   const lastSeen = contact?.lastSeenAt ? new Date(contact.lastSeenAt) : null;
   const lastSeenText = online
     ? 'Online'
@@ -81,6 +83,7 @@ export default function ChatHeader({ theme, contact, onBack }) {
         borderWidth={1}
         borderRadius={12}
         callName={contact?.name || 'Medi user'}
+        onWillPressed={() => canInvite}
       />
       <ZegoSendCallInvitationButton
         invitees={invitee}
@@ -95,6 +98,7 @@ export default function ChatHeader({ theme, contact, onBack }) {
         borderWidth={1}
         borderRadius={12}
         callName={contact?.name || 'Medi user'}
+        onWillPressed={() => canInvite}
       />
     </View>
   );

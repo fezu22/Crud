@@ -1299,6 +1299,7 @@ export default function PremiumChatScreen({
           <ChatHeader
             theme={theme}
             contact={{ ...contact, online: contactOnline, lastSeenAt: contactLastSeen }}
+            currentUserId={currentUserId}
             onBack={onBack}
           />
         )}
