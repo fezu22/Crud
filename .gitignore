@@ -73,14 +73,18 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
-backend/.env 
+
+# Backend secrets
+backend/.env
+
+# Generated APK files
 *.apk
-*.apk
-*.apk
-*.apk
-.vscode/ 
-*.log 
-yarn 
-.vscode/ 
-*.log 
-yarn 
+
+# Local editor settings
+.vscode/
+
+# Local logs
+*.log
+
+# Accidental local yarn file
+yarn
