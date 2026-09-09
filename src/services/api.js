@@ -134,14 +134,6 @@ export async function loginUser(identifier, password) {
   });
 }
 
-export async function loginWithTruecaller(truecallerPayload) {
-  return request('/auth/truecaller-login', {
-    method: 'POST',
-    body: truecallerPayload,
-    fallbackMessage: 'Truecaller authentication failed',
-  });
-}
-
 export async function getCurrentUser(token) {
   return request('/auth/me', {
     token,

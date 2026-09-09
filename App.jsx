@@ -32,7 +32,7 @@ import ConnectCloudStorageScreen from './src/screens/ConnectCloudStorageScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
 import ProjectsScreen from './src/screens/projects/ProjectsScreen';
 import ChatScreen from './src/screens/ChatScreen';
-import IncomingCallHost from './src/components/chat/IncomingCallHost';
+import ZegoCallInvitationHost from './src/components/chat/ZegoCallInvitationHost';
 import AdminDashboardScreen from './src/screens/admin/AdminDashboardScreen';
 import ProjectDetailModal from './src/screens/projects/ProjectDetailModal';
 import ProjectFormModal from './src/screens/projects/ProjectFormModal';
@@ -70,7 +70,7 @@ import {
   saveSession,
 } from './src/storage/sessionStorage';
 import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
-import { createCallSocket } from './src/services/callService';
+import { createSocket } from './src/services/socketService';
 import {
   initializeZegoCallInvitations,
   uninitializeZegoCallInvitations,
@@ -203,7 +203,7 @@ function StartupSkeleton({ theme }) {
   );
 }
 
-export default function App() {
+function AppContent() {
   const preferences = usePreferences();
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
@@ -312,7 +312,7 @@ export default function App() {
       );
     }
 
-    const socket = createCallSocket(token);
+    const socket = createSocket(token);
     const handleChatMessage = message => {
       const senderId = message?.sender?._id || message?.sender?.id || message?.sender;
       if (String(senderId) === String(getUserStorageId(user))) return;
@@ -600,7 +600,6 @@ export default function App() {
         <AlertNotificationRoot theme={preferences.theme}>
           <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
             <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
-              <IncomingCallHost key={token} token={token} user={user} themeMode={preferences.theme} />
               <StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} />
               <AdminDashboardScreen token={token} user={user} themeMode={preferences.theme} onLogout={logout} onError={error => showError('Chat error', error)} />
               <ConfirmDialog config={confirm} onCancel={closeConfirm} />
@@ -616,7 +615,6 @@ export default function App() {
       <AlertNotificationRoot theme={preferences.theme}>
       <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
         <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
-            <IncomingCallHost key={token} token={token} user={user} themeMode={preferences.theme} />
           <StatusBar
             barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'}
             backgroundColor={preferences.theme === 'dark' ? '#12111a' : '#ffffff'}
@@ -734,5 +732,13 @@ export default function App() {
       </View>
       </AlertNotificationRoot>
     </SafeAreaProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ZegoCallInvitationHost>
+      <AppContent />
+    </ZegoCallInvitationHost>
   );
 }

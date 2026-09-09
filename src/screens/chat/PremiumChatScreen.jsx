@@ -44,9 +44,7 @@ import {
 } from '../../services/api';
 import { API_BASE_URL } from '../../config/apiConfig';
 
-import {
-  createCallSocket,
-} from '../../services/callService';
+import { createSocket } from '../../services/socketService';
 
 import AttachmentSheet from '../../components/chat/AttachmentSheet';
 import ChatBackground from '../../components/chat/ChatBackground';
@@ -67,10 +65,9 @@ import {
   SendIcon,
 } from '../../components/chat/ChatIcons';
 
-import { FadeSlideIn, PressableScale, SkeletonBlock } from '../../components/motion';
+import { FadeSlideIn, SkeletonBlock } from '../../components/motion';
 import { getChatTheme } from '../../theme/chatTheme';
 import { makeId } from './mockChatData';
-import RealCallScreen from './RealCallScreen';
 import {
   loadCachedMessages,
   saveCachedMessages,
@@ -314,10 +311,6 @@ export default function PremiumChatScreen({
     useState(null);
   const [recordingOpen, setRecordingOpen] =
     useState(false);
-  const [activeCall, setActiveCall] =
-    useState(null);
-  const [incomingCall, setIncomingCall] =
-    useState(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const [editingMessage, setEditingMessage] = useState(null);
   const [deletePromptVisible, setDeletePromptVisible] = useState(false);
@@ -325,7 +318,6 @@ export default function PremiumChatScreen({
   const statusTimers = useRef([]);
   const listRef = useRef(null);
   const nearBottom = useRef(true);
-  const callSocketRef = useRef(null);
   const onErrorRef = useRef(onError);
 
   const jumpOpacity = useRef(
@@ -358,9 +350,7 @@ export default function PremiumChatScreen({
       return undefined;
     }
 
-    const socket = createCallSocket(token);
-
-    callSocketRef.current = socket;
+    const socket = createSocket(token);
 
     const onPresenceUpdate = event => {
       if (String(event?.userId || '') === String(contactId)) {
@@ -370,18 +360,15 @@ export default function PremiumChatScreen({
     };
     socket.on('presence:update', onPresenceUpdate);
 
-    // Incoming calls are owned by the app-level host, including other tabs.
-
     return () => {
       socket.off('presence:update', onPresenceUpdate);
       socket.disconnect();
-      callSocketRef.current = null;
     };
   }, [contactId, currentUserId, token]);
 
   useEffect(() => {
-    const socket = callSocketRef.current;
-    if (!socket || !syncWithServer) return undefined;
+    const socket = createSocket(token);
+    if (!syncWithServer) return undefined;
 
     const onChatMessage = message => {
       if (message.conversationId !== conversationId) return;
@@ -424,11 +411,12 @@ export default function PremiumChatScreen({
     socket.on('chat:message-updated', onChatMessageUpdated);
     return () => {
       socket.emit('chat:leave', { conversationId });
+      socket.disconnect();
       socket.off('chat:message', onChatMessage);
       socket.off('chat:message-deleted', onChatMessageDeleted);
       socket.off('chat:message-updated', onChatMessageUpdated);
     };
-  }, [conversationId, currentUserId, syncWithServer]);
+  }, [conversationId, currentUserId, syncWithServer, token]);
 
   useEffect(() => {
     onErrorRef.current = onError;
@@ -583,57 +571,6 @@ export default function PremiumChatScreen({
     nearBottom.current =
       distanceFromBottom < 140;
   };
-
-  /**
-   * Closes the call UI and drops a "Call ended • 4 min 32 sec" row into the
-   * transcript. RealCallScreen reports the real connected duration, so missed
-   * and cancelled calls are labelled correctly too.
-   */
-  const handleCallEnded = summary => {
-    const call = activeCall;
-    setActiveCall(null);
-
-    if (!call) return;
-
-    const durationSeconds = Math.max(0, Math.round(Number(summary?.durationSeconds) || 0));
-
-    setMessages(current => [
-      ...current,
-      {
-        _id: makeId(),
-        type: 'call',
-        sender: call.incomingCall ? 'them' : 'me',
-        createdAt: new Date().toISOString(),
-        callType: summary?.callType || call.type || 'voice',
-        callDuration: durationSeconds,
-        callConnected: Boolean(summary?.connected),
-        callOutgoing: !call.incomingCall,
-        status: 'read',
-        local: true,
-      },
-    ]);
-
-    nearBottom.current = true;
-    requestAnimationFrame(() => scrollToBottom(true));
-  };
-
-  if (activeCall) {
-    return (
-      <RealCallScreen
-        contact={
-          activeCall.contact || contact
-        }
-        token={token}
-        callType={activeCall.type}
-        currentUser={user}
-        themeMode={themeMode}
-        incomingCall={
-          activeCall.incomingCall
-        }
-        onEnd={handleCallEnded}
-      />
-    );
-  }
 
   const appendMessages = nextMessages => {
     LayoutAnimation.configureNext(
@@ -1363,8 +1300,6 @@ export default function PremiumChatScreen({
             theme={theme}
             contact={{ ...contact, online: contactOnline, lastSeenAt: contactLastSeen }}
             onBack={onBack}
-            onVoiceCall={() => setActiveCall({ type: 'voice' })}
-            onVideoCall={() => setActiveCall({ type: 'video' })}
           />
         )}
 
@@ -1611,104 +1546,6 @@ export default function PremiumChatScreen({
           </View>
         </Modal>
 
-        <Modal
-          visible={Boolean(incomingCall)}
-          transparent
-          animationType="fade"
-          onRequestClose={() =>
-            setIncomingCall(null)
-          }>
-          <View
-            style={styles.incomingOverlay}>
-            <View
-              style={styles.incomingCard}>
-              <Text
-                style={
-                  styles.incomingEyebrow
-                }>
-                INCOMING{' '}
-                {incomingCall?.callType ===
-                  'video'
-                  ? 'VIDEO'
-                  : 'VOICE'}{' '}
-                CALL
-              </Text>
-
-              <Text
-                style={styles.incomingName}>
-                {incomingCall?.fromName ||
-                  'Medi user'}
-              </Text>
-
-              <Text
-                style={styles.incomingHint}>
-                Answer the real WebRTC call?
-              </Text>
-
-              <View
-                style={styles.incomingActions}>
-                <TouchableOpacity
-                  style={[
-                    styles.incomingButton,
-                    styles.declineButton,
-                  ]}
-                  onPress={() => {
-                    callSocketRef.current?.emit(
-                      'call:reject',
-                      {
-                        targetUserId:
-                          incomingCall?.fromUserId,
-                        callId:
-                          incomingCall?.callId,
-                        callType:
-                          incomingCall?.callType,
-                      },
-                    );
-
-                    setIncomingCall(null);
-                  }}>
-                  <Text
-                    style={
-                      styles.incomingButtonText
-                    }>
-                    Decline
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.incomingButton,
-                    styles.acceptButton,
-                  ]}
-                  onPress={() => {
-                    const call = incomingCall;
-
-                    setIncomingCall(null);
-
-                    callSocketRef.current?.disconnect();
-
-                    setActiveCall({
-                      type: call.callType,
-                      incomingCall: call,
-                      contact: {
-                        ...contact,
-                        id: call.fromUserId,
-                        name: call.fromName,
-                        online: true,
-                      },
-                    });
-                  }}>
-                  <Text
-                    style={
-                      styles.incomingButtonText
-                    }>
-                    Answer
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
       </View>
     </KeyboardAvoidingView>
   );

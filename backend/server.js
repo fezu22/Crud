@@ -136,41 +136,6 @@ io.on('connection', socket => {
     socket.leave(`conversation:${conversationId}`);
   });
 
-  const forwardToUser = (eventName, payload = {}) => {
-    const targetUserId = String(payload.targetUserId || '');
-
-    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
-      return;
-    }
-
-    io.to(`user:${targetUserId}`).emit(eventName, {
-      ...payload,
-      fromUserId: userId,
-      fromName: socket.user.name || socket.user.email || 'Medi user',
-    });
-  };
-
-  socket.on('call:invite', payload => {
-    if (!activeSockets.has(String(payload?.targetUserId || ''))) {
-      socket.emit('call:unavailable', { callId: payload?.callId });
-      return;
-    }
-    forwardToUser('call:incoming', payload);
-  });
-
-  socket.on('call:accept', payload => {
-    forwardToUser('call:accepted', payload);
-  });
-
-  socket.on('call:reject', payload => {
-    forwardToUser('call:rejected', payload);
-  });
-
-  socket.on('call:hangup', (payload, acknowledge) => {
-    forwardToUser('call:hangup', payload);
-    if (typeof acknowledge === 'function') acknowledge({ ok: true });
-  });
-
   socket.on('disconnect', () => {
     const remaining = (activeSockets.get(userId) || 1) - 1;
     if (remaining > 0) {

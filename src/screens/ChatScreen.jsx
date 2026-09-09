@@ -32,7 +32,7 @@ import { deleteConversation, getAdminChat, getChatUsers, getConversations } from
 import PremiumChatScreen from './chat/PremiumChatScreen';
 import { formatClock } from '../components/chat/MessageBubble';
 import { DocumentIcon } from '../components/chat/ChatIcons';
-import { createCallSocket } from '../services/callService';
+import { createSocket } from '../services/socketService';
 import { vars } from 'nativewind';
 import { getChatTheme } from '../theme/chatTheme';
 import {
@@ -282,7 +282,7 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
 
   useEffect(() => {
     if (!token || !currentUserId) return undefined;
-    const socket = createCallSocket(token);
+    const socket = createSocket(token);
     let refreshTimer;
     const refreshList = () => {
       clearTimeout(refreshTimer);

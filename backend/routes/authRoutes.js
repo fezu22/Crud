@@ -271,7 +271,7 @@ const handleLogin = async (req, res) => {
     if (!user.password) {
       return res.status(400).json({
         message:
-          'This account was created with Truecaller.',
+          'This account does not have a password. Use the supported sign-in method.',
       });
     }
 

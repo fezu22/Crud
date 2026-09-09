@@ -1,8 +1,9 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { PhoneIcon, VideoIcon } from './ChatIcons';
 import PresenceIndicator from './PresenceIndicator';
 import { PressableScale } from '../motion';
+import { ZegoSendCallInvitationButton } from '@zegocloud/zego-uikit-prebuilt-call-rn';
+import { getZegoUserId, getZegoUserName } from '../../services/zegoService';
 
 function initialsOf(name) {
   return String(name || 'U')
@@ -18,8 +19,11 @@ function initialsOf(name) {
  * Chat header: back button, avatar, contact name with an animated presence
  * indicator, and the two call actions.
  */
-export default function ChatHeader({ theme, contact, onBack, onVoiceCall, onVideoCall }) {
+export default function ChatHeader({ theme, contact, onBack }) {
   const online = Boolean(contact?.online);
+  const invitee = contact?.id || contact?._id
+    ? [{ userID: getZegoUserId(contact), userName: getZegoUserName(contact) }]
+    : [];
   const lastSeen = contact?.lastSeenAt ? new Date(contact.lastSeenAt) : null;
   const lastSeenText = online
     ? 'Online'
@@ -64,20 +68,34 @@ export default function ChatHeader({ theme, contact, onBack, onVoiceCall, onVide
         </View>
       </View>
 
-      <PressableScale
-        style={[styles.action, { backgroundColor: theme.separatorBg, borderColor: theme.line }]}
-        onPress={onVoiceCall}
-        hitSlop={8}
-        accessibilityLabel="Voice call">
-        <PhoneIcon color={theme.primaryLight} size={18} />
-      </PressableScale>
-      <PressableScale
-        style={[styles.action, { backgroundColor: theme.separatorBg, borderColor: theme.line }]}
-        onPress={onVideoCall}
-        hitSlop={8}
-        accessibilityLabel="Video call">
-        <VideoIcon color={theme.primaryLight} size={18} />
-      </PressableScale>
+      <ZegoSendCallInvitationButton
+        invitees={invitee}
+        isVideoCall={false}
+        text="☎"
+        textColor={theme.primaryLight}
+        fontSize={18}
+        width={38}
+        height={38}
+        backgroundColor={theme.separatorBg}
+        borderColor={theme.line}
+        borderWidth={1}
+        borderRadius={12}
+        callName={contact?.name || 'Medi user'}
+      />
+      <ZegoSendCallInvitationButton
+        invitees={invitee}
+        isVideoCall
+        text="▣"
+        textColor={theme.primaryLight}
+        fontSize={18}
+        width={38}
+        height={38}
+        backgroundColor={theme.separatorBg}
+        borderColor={theme.line}
+        borderWidth={1}
+        borderRadius={12}
+        callName={contact?.name || 'Medi user'}
+      />
     </View>
   );
 }

@@ -38,6 +38,11 @@ jest.mock('react-native-reanimated', () => {
     __mockReact: React,
   };
 });
+jest.mock('react-native-gesture-handler', () => require('./mocks/gestureHandler'));
+jest.mock('@zegocloud/zego-uikit-prebuilt-call-rn', () => require('./mocks/zegoCallKit'));
+jest.mock('@react-navigation/native', () => require('./mocks/navigation'));
+jest.mock('@react-navigation/native-stack', () => require('./mocks/navigation'));
+jest.mock('../src/services/zegoCallInvitation', () => require('./mocks/zegoInvitationService'));
 jest.mock('@notifee/react-native', () => ({
   __esModule: true,
   default: {
