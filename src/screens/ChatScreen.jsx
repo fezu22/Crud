@@ -12,7 +12,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from 'react-native-gesture-handler';
 import ReanimatedAnimated, {
   runOnJS,
   useAnimatedStyle,
@@ -103,21 +107,22 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={closePicker}>
-      <ModalBackdrop
-        visible={visible}
-        className="flex-1 justify-end bg-black/60"
-        style={vars({
-          '--color-canvas': theme.background, '--color-surface': theme.surfaceAlt,
-          '--color-ink': theme.ink, '--color-muted': theme.muted, '--color-line': theme.line,
-        })}>
-        <ReanimatedAnimated.View
-          style={[{ minHeight: '65%', backgroundColor: theme.background }, sheetStyle]}
-          className="max-h-[86%] rounded-t-[28px] bg-canvas px-5 pb-7 pt-3">
-          <GestureDetector gesture={panGesture}>
-            <View className="mb-4 items-center py-3">
-              <View className="h-1 w-10 rounded-full bg-line" />
-            </View>
-          </GestureDetector>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ModalBackdrop
+          visible={visible}
+          className="flex-1 justify-end bg-black/60"
+          style={vars({
+            '--color-canvas': theme.background, '--color-surface': theme.surfaceAlt,
+            '--color-ink': theme.ink, '--color-muted': theme.muted, '--color-line': theme.line,
+          })}>
+          <ReanimatedAnimated.View
+            style={[{ minHeight: '65%', backgroundColor: theme.background }, sheetStyle]}
+            className="max-h-[86%] rounded-t-[28px] bg-canvas px-5 pb-7 pt-3">
+            <GestureDetector gesture={panGesture}>
+              <View className="mb-4 items-center py-3">
+                <View className="h-1 w-10 rounded-full bg-line" />
+              </View>
+            </GestureDetector>
           <View className="mb-4 flex-row items-center justify-between">
             {loading ? (
               <SkeletonBlock color={theme.surfaceAlt} className="h-7 w-28 rounded-lg" style={{ height: 28, width: 112 }} />
@@ -211,8 +216,9 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
               }
             />
           )}
-        </ReanimatedAnimated.View>
-      </ModalBackdrop>
+          </ReanimatedAnimated.View>
+        </ModalBackdrop>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
