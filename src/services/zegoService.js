@@ -1,6 +1,6 @@
 import { API_BASE_URL } from '../config/apiConfig';
 
-export const ZEGO_APP_ID = 60432965;
+export const ZEGO_APP_ID = 1460432965;
 
 export function getZegoUserId(user) {
   const id = user?._id || user?.id;
