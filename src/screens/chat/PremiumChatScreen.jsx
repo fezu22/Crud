@@ -288,6 +288,8 @@ export default function PremiumChatScreen({
   user,
   onError,
   onBack,
+  zegoStatus,
+  onRetryZego,
   themeMode = 'dark',
 }) {
   const [messages, setMessages] = useState([]);
@@ -1284,6 +1286,8 @@ export default function PremiumChatScreen({
             contact={{ ...contact, online: contactOnline, lastSeenAt: contactLastSeen }}
             currentUserId={currentUserId}
             onBack={onBack}
+            zegoStatus={zegoStatus}
+            onRetryZego={onRetryZego}
           />
         )}
 

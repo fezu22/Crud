@@ -234,6 +234,8 @@ function AppContent() {
     message: '',
     host: 'screen',
   });
+  const [zegoStatus, setZegoStatus] = useState('idle');
+  const [zegoRetry, setZegoRetry] = useState(0);
   const profileUserId = getUserStorageId(user);
   const zegoUserId = user?._id || user?.id;
   const zegoUserRef = useRef(user);
@@ -299,12 +301,28 @@ function AppContent() {
     return () => clearInterval(id);
   }, [token]);
   useEffect(() => {
-    if (!token || !zegoUserId) return undefined;
-    initializeZegoCallInvitations(token, zegoUserRef.current).catch(() => {
-      console.warn('Could not initialize call invitations.');
-    });
-    return () => uninitializeZegoCallInvitations();
-  }, [token, zegoUserId]);
+    if (!token || !zegoUserId) {
+      setZegoStatus('idle');
+      uninitializeZegoCallInvitations();
+      return undefined;
+    }
+
+    let active = true;
+    setZegoStatus('initializing');
+    initializeZegoCallInvitations(token, zegoUserRef.current)
+      .then(() => {
+        if (active) setZegoStatus('ready');
+      })
+      .catch(error => {
+        console.warn('Could not initialize ZEGOCLOUD calling:', error);
+        if (active) setZegoStatus('error');
+      });
+
+    return () => {
+      active = false;
+      uninitializeZegoCallInvitations();
+    };
+  }, [token, zegoRetry, zegoUserId]);
   useEffect(() => {
     if (!token || !user || !preferences.ready || !preferences.notifications) {
       return undefined;
@@ -675,7 +693,14 @@ function AppContent() {
               onProfile={() => setActiveTab('profile')}
             />
           ) : activeTab === 'chat' ? (
-            <ChatScreen token={token} user={user} themeMode={preferences.theme} onError={error => showError('Chat error', error)} />
+            <ChatScreen
+              token={token}
+              user={user}
+              themeMode={preferences.theme}
+              zegoStatus={zegoStatus}
+              onRetryZego={() => setZegoRetry(value => value + 1)}
+              onError={error => showError('Chat error', error)}
+            />
           ) : activeTab === 'projects' ? (
             <ProjectsScreen
               projects={projects} tasks={tasks}

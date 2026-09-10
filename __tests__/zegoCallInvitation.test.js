@@ -33,9 +33,14 @@ afterEach(() => {
 });
 
 test('registers the ZIM module namespace required by ZegoUIKit', async () => {
+  global.fetch = jest.fn(async () => ({
+    ok: true,
+    json: async () => ({ token: 'zego-token', userId: '507f1f77bcf86cd799439011' }),
+  }));
   await initializeZegoCallInvitations('session-token', { _id: '507f1f77bcf86cd799439011', name: 'Faraz' });
 
   const plugins = mockInit.mock.calls[0][4];
   expect(plugins[0].ZIMConnectionState).toEqual({ connected: 0 });
   expect(plugins[0].default).toBeDefined();
+  expect(mockOnTokenProvide).toHaveBeenCalledWith(expect.any(Function));
 });

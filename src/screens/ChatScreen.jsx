@@ -223,7 +223,14 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
   );
 }
 
-export default function ChatScreen({ token, user, onError, themeMode = 'dark' }) {
+export default function ChatScreen({
+  token,
+  user,
+  onError,
+  themeMode = 'dark',
+  zegoStatus = 'idle',
+  onRetryZego,
+}) {
   const theme = getChatTheme(themeMode);
   const [search, setSearch] = useState('');
   const [conversations, setConversations] = useState([]);
@@ -368,6 +375,8 @@ export default function ChatScreen({ token, user, onError, themeMode = 'dark' })
         token={token}
         user={user}
         themeMode={themeMode}
+        zegoStatus={zegoStatus}
+        onRetryZego={onRetryZego}
         onError={onError}
         onBack={() => {
           setActive(null);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PresenceIndicator from './PresenceIndicator';
 import { PressableScale } from '../motion';
 import { ZegoSendCallInvitationButton } from '@zegocloud/zego-uikit-prebuilt-call-rn';
@@ -19,19 +19,34 @@ function initialsOf(name) {
  * Chat header: back button, avatar, contact name with an animated presence
  * indicator, and the two call actions.
  */
-export default function ChatHeader({ theme, contact, currentUserId, onBack }) {
+export default function ChatHeader({
+  theme,
+  contact,
+  currentUserId,
+  onBack,
+  zegoStatus = 'idle',
+  onRetryZego,
+}) {
   const online = Boolean(contact?.online);
   const contactId = contact?.id || contact?._id;
   const invitee = contactId
     ? [{ userID: getZegoUserId(contact), userName: getZegoUserName(contact) }]
     : [];
-  const canInvite = invitee.length > 0 && String(contactId) !== String(currentUserId);
+  const canInvite =
+    zegoStatus === 'ready' &&
+    invitee.length > 0 &&
+    String(contactId) !== String(currentUserId);
   const lastSeen = contact?.lastSeenAt ? new Date(contact.lastSeenAt) : null;
   const lastSeenText = online
     ? 'Online'
     : lastSeen && !Number.isNaN(lastSeen.getTime())
       ? `Last seen ${lastSeen.toLocaleDateString() === new Date().toLocaleDateString() ? `today at ${lastSeen.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : lastSeen.toLocaleDateString([], { day: 'numeric', month: 'short' })}`
       : 'Offline';
+  const callStatusText = zegoStatus === 'error'
+    ? 'Calls unavailable — tap a call button to retry'
+    : zegoStatus === 'initializing'
+      ? 'Connecting call service…'
+      : lastSeenText;
 
   return (
     <View
@@ -66,11 +81,11 @@ export default function ChatHeader({ theme, contact, currentUserId, onBack }) {
             style={[
               styles.statusText,
               { color: online ? theme.onlineDot : theme.muted },
-            ]}>{lastSeenText}</Text>
+            ]}>{callStatusText}</Text>
         </View>
       </View>
 
-      <ZegoSendCallInvitationButton
+      {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
         invitees={invitee}
         isVideoCall={false}
         text={'\u260E'}
@@ -84,8 +99,8 @@ export default function ChatHeader({ theme, contact, currentUserId, onBack }) {
         borderRadius={12}
         callName={contact?.name || 'Medi user'}
         onWillPressed={() => canInvite}
-      />
-      <ZegoSendCallInvitationButton
+      /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Voice call unavailable" text={'\u260E'} />}
+      {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
         invitees={invitee}
         isVideoCall
         text={'\u25A3'}
@@ -99,8 +114,25 @@ export default function ChatHeader({ theme, contact, currentUserId, onBack }) {
         borderRadius={12}
         callName={contact?.name || 'Medi user'}
         onWillPressed={() => canInvite}
-      />
+      /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Video call unavailable" text={'\u25A3'} />}
     </View>
+  );
+}
+
+function UnavailableCallButton({ theme, status, onRetry, label, text }) {
+  const canRetry = status === 'error' && typeof onRetry === 'function';
+  return (
+    <TouchableOpacity
+      disabled={!canRetry}
+      onPress={onRetry}
+      accessibilityLabel={canRetry ? 'Retry call service connection' : label}
+      style={[
+        styles.action,
+        styles.unavailableAction,
+        { backgroundColor: theme.separatorBg, borderColor: theme.line },
+      ]}>
+      <Text style={[styles.callGlyph, { color: theme.primaryLight }]}>{text}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -154,6 +186,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
+  },
+  unavailableAction: {
+    opacity: 0.45,
+  },
+  callGlyph: {
+    fontSize: 18,
   },
   backAction: {
     marginLeft: 0,
