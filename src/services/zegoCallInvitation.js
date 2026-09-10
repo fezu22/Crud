@@ -1,5 +1,5 @@
 import ZegoUIKit from '@zegocloud/zego-uikit-rn';
-import ZegoUIKitPrebuiltCallInvitationService from '@zegocloud/zego-uikit-prebuilt-call-rn';
+import ZegoUIKitPrebuiltCallService from '@zegocloud/zego-uikit-prebuilt-call-rn';
 import * as ZIM from 'zego-zim-react-native';
 import { ZEGO_APP_ID, getZegoUserId, getZegoUserName, requestZegoToken } from './zegoService';
 
@@ -42,7 +42,7 @@ export async function initializeZegoCallInvitations(authToken, user) {
       }
     });
 
-    await ZegoUIKitPrebuiltCallInvitationService.init(
+    await ZegoUIKitPrebuiltCallService.init(
       ZEGO_APP_ID,
       '',
       userId,
@@ -50,7 +50,7 @@ export async function initializeZegoCallInvitations(authToken, user) {
       [ZIM],
     );
     if (generation !== lifecycleGeneration) {
-      ZegoUIKitPrebuiltCallInvitationService.uninit();
+      ZegoUIKitPrebuiltCallService.uninit();
       return;
     }
     initializedUserId = userId;
@@ -71,7 +71,7 @@ export async function initializeZegoCallInvitations(authToken, user) {
 
 export function uninitializeZegoCallInvitations() {
   lifecycleGeneration += 1;
-  if (initializedUserId) ZegoUIKitPrebuiltCallInvitationService.uninit();
+  if (initializedUserId) ZegoUIKitPrebuiltCallService.uninit();
   ZegoUIKit.onTokenProvide(undefined);
   initializedUserId = null;
   initializationPromise = null;
