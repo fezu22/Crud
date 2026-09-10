@@ -240,6 +240,7 @@ function AppContent() {
   zegoUserRef.current = user;
   const successTimeoutRef = useRef(null);
   const authGenerationRef = useRef(0);
+  const authBusyRef = useRef(false);
   const notificationPromptUserRef = useRef(null);
   const {
     tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
@@ -458,15 +459,36 @@ function AppContent() {
     }
   }
   async function register(form) {
+    if (authBusyRef.current) return;
+
+    authBusyRef.current = true;
+    setAuthLoading(true);
     const authGeneration = authGenerationRef.current + 1;
     authGenerationRef.current = authGeneration;
-    const identifier = form.email || form.phone;
-    const data = await registerUser(form.name, identifier, form.password);
-    if (authGenerationRef.current !== authGeneration) return;
-    if (data.user?.encryptionSalt) deriveSessionKey(form.password, data.user.encryptionSalt);
-    setToken(data.token);
-    setUser(data.user);
-    await saveSession(data.token, data.user);
+
+    try {
+      const identifier = form.email || form.phone;
+      const data = await registerUser(form.name, identifier, form.password);
+      if (authGenerationRef.current !== authGeneration) return;
+
+      if (data.user?.encryptionSalt) {
+        deriveSessionKey(form.password, data.user.encryptionSalt);
+      }
+
+      setToken(data.token);
+      setUser(data.user);
+      await saveSession(data.token, data.user);
+    } catch (error) {
+      clearSessionKey();
+      const safeError = error instanceof Error
+        ? error
+        : new Error('Could not create your account. Please try again.');
+      showError('Account Creation Failed', safeError);
+      throw safeError;
+    } finally {
+      authBusyRef.current = false;
+      setAuthLoading(false);
+    }
   }
   function logout() {
     ask({

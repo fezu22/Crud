@@ -64,7 +64,7 @@ function Field({
   );
 }
 
-function RegisterModal({ visible, onClose, onRegister }) {
+function RegisterModal({ visible, onClose, onRegister, isBusy }) {
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -73,8 +73,11 @@ function RegisterModal({ visible, onClose, onRegister }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const submittingRef = useRef(false);
 
   const submit = async () => {
+    if (submittingRef.current || loading || isBusy) return;
+
     if (!name.trim() || !identifier.trim() || password.length < 6) {
       setError('Name, email/phone and a 6 character password are required.');
       return;
@@ -85,6 +88,7 @@ function RegisterModal({ visible, onClose, onRegister }) {
       return;
     }
 
+    submittingRef.current = true;
     setLoading(true);
     setError('');
 
@@ -99,6 +103,7 @@ function RegisterModal({ visible, onClose, onRegister }) {
     } catch (e) {
       setError(e.message);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
@@ -164,7 +169,7 @@ function RegisterModal({ visible, onClose, onRegister }) {
           <TouchableOpacity
             className="h-14 items-center justify-center rounded-2xl bg-brand"
             onPress={submit}
-            disabled={loading}
+            disabled={loading || isBusy}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
@@ -329,6 +334,7 @@ export default function LoginScreen({ onLogin, onRegister, isLoading }) {
         visible={registerOpen}
         onClose={() => setRegisterOpen(false)}
         onRegister={onRegister}
+        isBusy={isLoading}
       />
     </View>
   );
