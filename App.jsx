@@ -75,6 +75,7 @@ import {
   initializeZegoCallInvitations,
   uninitializeZegoCallInvitations,
 } from './src/services/zegoCallInvitation';
+import { setZegoCallThemeMode } from './src/components/chat/ZegoCallUi';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -205,6 +206,10 @@ function StartupSkeleton({ theme }) {
 
 function AppContent() {
   const preferences = usePreferences();
+
+  useEffect(() => {
+    setZegoCallThemeMode(preferences.theme);
+  }, [preferences.theme]);
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
   const [profileImage, setProfileImage] = useState(null);

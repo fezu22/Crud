@@ -468,13 +468,13 @@ export default function ChatScreen({
 
   useEffect(() => {
     const handleHardwareBack = () => {
-      if (selectedConversationIds.length) {
-        setSelectedConversationIds([]);
+      if (deleteDialog) {
+        cancelDeleteSelection();
         return true;
       }
 
-      if (deleteDialog) {
-        cancelDeleteSelection();
+      if (selectedConversationIds.length) {
+        setSelectedConversationIds([]);
         return true;
       }
 

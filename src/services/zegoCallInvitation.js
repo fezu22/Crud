@@ -2,6 +2,7 @@ import ZegoUIKit from '@zegocloud/zego-uikit-rn';
 import ZegoUIKitPrebuiltCallService from '@zegocloud/zego-uikit-prebuilt-call-rn';
 import * as ZIM from 'zego-zim-react-native';
 import { ZEGO_APP_ID, getZegoUserId, getZegoUserName, requestZegoToken } from './zegoService';
+import { getZegoCallUiConfig } from '../components/chat/ZegoCallUi';
 
 let initializedUserId = null;
 let initializationPromise = null;
@@ -108,14 +109,12 @@ export async function initializeZegoCallInvitations(authToken, user) {
         getZegoUserName(user),
         [ZIM],
         {
+          ...getZegoCallUiConfig((...details) => notifyCallEvent('ended', details)),
           onOutgoingCallAccepted: (...details) => notifyCallEvent('accepted', details),
           onOutgoingCallDeclined: (...details) => notifyCallEvent('declined', details),
           onOutgoingCallRejectedCauseBusy: (...details) => notifyCallEvent('busy', details),
           onOutgoingCallTimeout: (...details) => notifyCallEvent('timeout', details),
           onOutgoingCallCancelButtonPressed: (...details) => notifyCallEvent('canceled', details),
-          requireConfig: () => ({
-            onCallEnd: (...details) => notifyCallEvent('ended', details),
-          }),
         },
       );
     } catch (error) {
