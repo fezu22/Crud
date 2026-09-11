@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import PresenceIndicator from './PresenceIndicator';
 import { PressableScale } from '../motion';
 import { PhoneIcon, VideoIcon } from './ChatIcons';
+import { setZegoCallThemeMode } from './ZegoCallUi';
 
 function initialsOf(name) {
   return String(name || 'U')
@@ -37,6 +38,7 @@ export default function ChatHeader({
   theme,
   contact,
   currentUserId,
+  themeMode = 'dark',
   onBack,
   zegoStatus = 'idle',
   onStartCall,
@@ -94,7 +96,9 @@ export default function ChatHeader({
       ? 'Connecting call service…'
       : presenceText;
   const startCall = type => {
-    if (canInvite) onStartCall?.(type);
+    if (!canInvite) return;
+    setZegoCallThemeMode(themeMode);
+    onStartCall?.(type);
   };
 
   return (
