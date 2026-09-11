@@ -64,7 +64,7 @@ import {
   SendIcon,
 } from '../../components/chat/ChatIcons';
 
-import { FadeSlideIn, SkeletonBlock } from '../../components/motion';
+import { FadeSlideIn } from '../../components/motion';
 import { getChatTheme } from '../../theme/chatTheme';
 import {
   loadCachedMessages,
@@ -238,50 +238,6 @@ function isDocumentFile(file) {
   return hasDocumentExtension || isDocumentMime;
 }
 
-function ChatSkeleton({ theme, contact }) {
-  // Theme-aware shimmer blocks: the old skeleton hardcoded dark colors and
-  // was invisible on the light theme.
-  const block = style => <SkeletonBlock theme={theme} style={[styles.skeletonBlock, style]} />;
-
-  return (
-    <View style={[styles.fullPageLoading, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.barStyle} backgroundColor={theme.background} />
-      <ChatBackground theme={theme} />
-      <View style={[styles.skeletonHeader, { borderBottomColor: theme.line }]}>
-        {block(styles.skeletonBack)}
-        <View style={styles.skeletonProfile}>
-          {block(styles.skeletonName)}
-          {block(styles.skeletonStatus)}
-        </View>
-        <View style={styles.skeletonHeaderActions}>
-          {block(styles.skeletonIcon)}
-          {block(styles.skeletonIcon)}
-        </View>
-      </View>
-      <View style={styles.skeletonMessages}>
-        <View style={styles.skeletonIncoming}>
-          {block(styles.skeletonImage)}
-          {block(styles.skeletonLineShort)}
-        </View>
-        <View style={styles.skeletonOutgoing}>
-          {block(styles.skeletonImage)}
-          {block(styles.skeletonLineMedium)}
-        </View>
-        <View style={styles.skeletonIncoming}>
-          {block(styles.skeletonLineLong)}
-          {block(styles.skeletonLineShort)}
-        </View>
-      </View>
-      <View style={[styles.skeletonComposer, { borderTopColor: theme.line }]}>
-        {block(styles.skeletonAttach)}
-        {block(styles.skeletonInput)}
-        {block(styles.skeletonAttach)}
-      </View>
-      <Text style={[styles.loadingText, { color: theme.muted }]}>Loading {contact?.name || 'chat'}...</Text>
-    </View>
-  );
-}
-
 export default function PremiumChatScreen({
   contact,
   token,
@@ -294,7 +250,7 @@ export default function PremiumChatScreen({
 }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [initialMessageLoading, setInitialMessageLoading] = useState(true);
   const [cacheHydrated, setCacheHydrated] = useState(false);
   const [sendingText, setSendingText] = useState(false);
   const [contactOnline, setContactOnline] = useState(Boolean(contact?.online));
@@ -482,33 +438,35 @@ export default function PremiumChatScreen({
 
   useEffect(() => {
     if (!syncWithServer) {
-      setLoading(false);
+      setInitialMessageLoading(false);
       return undefined;
     }
 
     let mounted = true;
 
-    setMessages([]);
     setCacheHydrated(false);
     hydratedConversationRef.current = null;
-    setLoading(true);
+    setInitialMessageLoading(true);
 
     async function hydrateMessages() {
       const cached = await loadCachedMessages(currentUserId, conversationId);
       if (!mounted) return;
 
-      if (cached.length) setMessages(cached);
+      if (cached.length) {
+        setMessages(cached);
+        setInitialMessageLoading(false);
+      } else {
+        setMessages([]);
+      }
       hydratedConversationRef.current = conversationId;
       setCacheHydrated(true);
-      // Socket.IO keeps this conversation current. Fetch once after the cache
-      // has painted instead of blocking the initial chat screen.
-      setLoading(false);
-      await loadServerMessages();
+      // Fetch after the cache has rendered; it must never block the chat UI.
+      loadServerMessages().finally(() => {
+        if (mounted) setInitialMessageLoading(false);
+      });
     }
 
-    hydrateMessages().finally(() => {
-      if (mounted) setLoading(false);
-    });
+    hydrateMessages();
 
     return () => {
       mounted = false;
@@ -1245,10 +1203,6 @@ export default function PremiumChatScreen({
     );
   };
 
-  if (loading) {
-    return <ChatSkeleton theme={theme} contact={contact} />;
-  }
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -1317,7 +1271,7 @@ export default function PremiumChatScreen({
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              {loading || sendingText ? (
+              {initialMessageLoading || sendingText ? (
                 <ActivityIndicator
                   color={theme.primaryLight}
                 />
@@ -1330,11 +1284,9 @@ export default function PremiumChatScreen({
                     color: theme.muted,
                   },
                 ]}>
-                {loading
-                  ? 'Loading messages…'
-                  : sendingText
-                    ? ''
-                    : `No messages yet. Say hello to ${contact.name}!`}
+                {initialMessageLoading || sendingText
+                  ? ''
+                  : `No messages yet. Say hello to ${contact.name}!`}
               </Text>
             </View>
           }
@@ -1548,124 +1500,6 @@ export default function PremiumChatScreen({
 }
 
 const styles = StyleSheet.create({
-  fullPageLoading: {
-    flex: 1,
-  },
-
-  loadingText: {
-    textAlign: 'center',
-    marginTop: 8,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  skeletonHeader: {
-    minHeight: 86,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#2B273A',
-  },
-
-  skeletonBlock: {
-    borderRadius: 10,
-  },
-
-  skeletonBack: {
-    width: 52,
-    height: 18,
-  },
-
-  skeletonProfile: {
-    flex: 1,
-    marginLeft: 20,
-  },
-
-  skeletonName: {
-    width: 132,
-    height: 20,
-  },
-
-  skeletonStatus: {
-    width: 72,
-    height: 12,
-    marginTop: 8,
-  },
-
-  skeletonHeaderActions: {
-    flexDirection: 'row',
-    gap: 14,
-  },
-
-  skeletonIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
-
-  skeletonMessages: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-  },
-
-  skeletonIncoming: {
-    alignSelf: 'flex-start',
-    marginVertical: 8,
-  },
-
-  skeletonOutgoing: {
-    alignSelf: 'flex-end',
-    marginVertical: 8,
-  },
-
-  skeletonImage: {
-    width: 232,
-    height: 150,
-    borderRadius: 16,
-  },
-
-  skeletonLineShort: {
-    width: 116,
-    height: 14,
-    marginTop: 8,
-  },
-
-  skeletonLineMedium: {
-    width: 170,
-    height: 14,
-    marginTop: 8,
-  },
-
-  skeletonLineLong: {
-    width: 210,
-    height: 14,
-  },
-
-  skeletonComposer: {
-    height: 88,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#2B273A',
-  },
-
-  skeletonAttach: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
-
-  skeletonInput: {
-    flex: 1,
-    height: 52,
-    borderRadius: 26,
-  },
-
   selectionBar: {
     minHeight: 72,
     paddingHorizontal: 20,
