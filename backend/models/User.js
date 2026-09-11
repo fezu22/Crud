@@ -39,7 +39,13 @@ const UserSchema = new mongoose.Schema(
       default: 'email',
     },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    // Set only after a successful authenticated sign-in (or account creation),
+    // not on ordinary API activity. This is the retention-policy timestamp.
+    lastLoginAt: { type: Date, default: null },
     lastActiveAt: { type: Date, default: null },
+    isActive: { type: Boolean, default: true },
+    // Reserved for service/system identities. These are never auto-deactivated.
+    isSystem: { type: Boolean, default: false },
 
     cloudinaryConnected: {
       type: Boolean,
@@ -66,5 +72,7 @@ UserSchema.index({ cloudName: 1 }, {
   unique: true,
   partialFilterExpression: { cloudName: { $type: 'string', $ne: '' } },
 });
+
+UserSchema.index({ isActive: 1, lastLoginAt: 1, role: 1 });
 
 module.exports = mongoose.model('User', UserSchema);

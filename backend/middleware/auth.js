@@ -50,6 +50,14 @@ const auth = async (req, res, next) => {
       });
     }
 
+    // A deactivated account must perform a successful login to reactivate.
+    // Missing isActive is treated as active for backwards compatibility.
+    if (user.isActive === false) {
+      return res.status(401).json({
+        message: 'This account is inactive. Please sign in again to reactivate it.',
+      });
+    }
+
     await ensureConfiguredAdminRole(user);
 
     req.user = user;

@@ -110,6 +110,10 @@ const handleRegister = async (req, res) => {
       cloudinaryCloudName: '',
       cloudName: '',
       cloudinaryConnectedAt: null,
+      // Registration creates an authenticated account, so establish the same
+      // timestamp used for successful sign-ins from the outset.
+      lastLoginAt: new Date(),
+      isActive: true,
     };
 
     // EMAIL
@@ -287,6 +291,12 @@ const handleLogin = async (req, res) => {
           : 'Incorrect password or phone number',
       });
     }
+
+    // A successful password check is the only normal login path that updates
+    // this timestamp. It also safely reactivates a previously deactivated user.
+    user.lastLoginAt = new Date();
+    user.isActive = true;
+    await user.save();
 
     const token = generateToken(user._id);
 

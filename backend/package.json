@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "delete:users": "node scripts/deleteAllUsers.js --confirm",
+    "deactivate:inactive-users": "node scripts/deactivateInactiveUsers.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

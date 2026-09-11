@@ -100,6 +100,10 @@ io.use(async (socket, next) => {
       return next(new Error('User not found'));
     }
 
+    if (user.isActive === false) {
+      return next(new Error('Account inactive. Please sign in again.'));
+    }
+
     socket.user = user;
     next();
   } catch (error) {

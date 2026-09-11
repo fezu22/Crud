@@ -132,6 +132,7 @@ router.get('/users', async (req, res) => {
   const filter = {
     _id: { $ne: req.user._id },
     role: { $ne: 'admin' },
+    isActive: { $ne: false },
   };
 
   if (q) {
@@ -297,6 +298,7 @@ router.get(
       role: {
         $ne: 'admin',
       },
+      isActive: { $ne: false },
     };
 
     if (q) {
