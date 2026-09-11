@@ -142,8 +142,9 @@ io.on('connection', socket => {
       activeSockets.set(userId, remaining);
     } else {
       activeSockets.delete(userId);
-      User.updateOne({ _id: socket.user._id }, { lastActiveAt: null }).catch(() => {});
-      io.emit('presence:update', { userId, online: false, lastSeenAt: new Date().toISOString() });
+      const lastActiveAt = new Date();
+      User.updateOne({ _id: socket.user._id }, { lastActiveAt }).catch(() => {});
+      io.emit('presence:update', { userId, online: false, lastSeenAt: lastActiveAt.toISOString() });
     }
     console.log(`Call socket disconnected: ${socket.user.email || userId}`);
   });

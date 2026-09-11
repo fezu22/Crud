@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PresenceIndicator from './PresenceIndicator';
 import { PressableScale } from '../motion';
 import { ZegoSendCallInvitationButton } from '@zegocloud/zego-uikit-prebuilt-call-rn';
@@ -15,6 +15,21 @@ function initialsOf(name) {
     .toUpperCase();
 }
 
+function formatLastSeen(value) {
+  const lastSeen = value ? new Date(value) : null;
+  if (!lastSeen || Number.isNaN(lastSeen.getTime())) return null;
+
+  const elapsed = Math.max(0, Date.now() - lastSeen.getTime());
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 1) return 'Last seen just now';
+  if (minutes < 60) return `Last seen ${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Last seen ${hours}h ago`;
+  if (hours < 48) return 'Last seen yesterday';
+  return `Last seen ${lastSeen.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+}
+
 /**
  * Chat header: back button, avatar, contact name with an animated presence
  * indicator, and the two call actions.
@@ -28,6 +43,7 @@ export default function ChatHeader({
   onRetryZego,
 }) {
   const online = Boolean(contact?.online);
+  const onlinePresenceColor = '#22c55e';
   const contactId = contact?.id || contact?._id;
   const invitee = contactId
     ? [{ userID: getZegoUserId(contact), userName: getZegoUserName(contact) }]
@@ -36,17 +52,51 @@ export default function ChatHeader({
     zegoStatus === 'ready' &&
     invitee.length > 0 &&
     String(contactId) !== String(currentUserId);
-  const lastSeen = contact?.lastSeenAt ? new Date(contact.lastSeenAt) : null;
-  const lastSeenText = online
+  const lastSeenText = formatLastSeen(contact?.lastSeenAt || contact?.lastActiveAt);
+  const [showLastSeen, setShowLastSeen] = useState(true);
+  const statusOpacity = useRef(new Animated.Value(1)).current;
+  const shouldCyclePresence = !online && Boolean(lastSeenText) && zegoStatus === 'ready';
+
+  useEffect(() => {
+    let active = true;
+    statusOpacity.stopAnimation();
+    statusOpacity.setValue(1);
+    setShowLastSeen(true);
+    if (!shouldCyclePresence) return () => { active = false; };
+
+    const interval = setInterval(() => {
+      Animated.timing(statusOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!active || !finished) return;
+        setShowLastSeen(current => !current);
+        Animated.timing(statusOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 3000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+      statusOpacity.stopAnimation();
+    };
+  }, [lastSeenText, shouldCyclePresence, statusOpacity]);
+
+  const presenceText = online
     ? 'Online'
-    : lastSeen && !Number.isNaN(lastSeen.getTime())
-      ? `Last seen ${lastSeen.toLocaleDateString() === new Date().toLocaleDateString() ? `today at ${lastSeen.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : lastSeen.toLocaleDateString([], { day: 'numeric', month: 'short' })}`
+    : showLastSeen && lastSeenText
+      ? lastSeenText
       : 'Offline';
   const callStatusText = zegoStatus === 'error'
     ? 'Calls unavailable — tap a call button to retry'
     : zegoStatus === 'initializing'
       ? 'Connecting call service…'
-      : lastSeenText;
+      : presenceText;
 
   return (
     <View
@@ -54,67 +104,73 @@ export default function ChatHeader({
         styles.header,
         { backgroundColor: theme.background, borderBottomColor: theme.line },
       ]}>
-      <PressableScale
-        onPress={onBack}
-        hitSlop={10}
-        accessibilityLabel="Back to messages"
-        style={[styles.action, styles.backAction, { backgroundColor: theme.surfaceAlt, borderColor: theme.line }]}>
-        <Text style={[styles.backGlyph, { color: theme.ink }]}>{'\u2039'}</Text>
-      </PressableScale>
+      <View style={styles.userSection}>
+        <PressableScale
+          onPress={onBack}
+          hitSlop={10}
+          accessibilityLabel="Back to messages"
+          style={[styles.backAction, { backgroundColor: theme.surfaceAlt, borderColor: theme.line }]}>
+          <Text style={[styles.backGlyph, { color: theme.ink }]}>{'\u2039'}</Text>
+        </PressableScale>
 
-      <View style={[styles.avatar, { backgroundColor: theme.separatorBg, borderColor: theme.primary }]}>
-        <Text style={[styles.avatarText, { color: theme.primaryLight }]}>{initialsOf(contact?.name)}</Text>
-      </View>
+        <View style={[styles.avatar, { backgroundColor: theme.separatorBg, borderColor: theme.primary }]}>
+          <Text style={[styles.avatarText, { color: theme.primaryLight }]}>{initialsOf(contact?.name)}</Text>
+        </View>
 
-      <View style={styles.identity}>
-        <Text style={[styles.name, { color: theme.ink }]} numberOfLines={1}>
-          {contact?.name || 'Medi user'}
-        </Text>
-        <View style={styles.statusRow}>
-          <PresenceIndicator
-            online={online}
-            size={8}
-            onlineColor={theme.onlineDot}
-            offlineColor={theme.offlineDot}
-          />
+        <View style={styles.identity}>
           <Text
-            style={[
-              styles.statusText,
-              { color: online ? theme.onlineDot : theme.muted },
-            ]}>{callStatusText}</Text>
+            style={[styles.name, { color: theme.ink }]}
+            numberOfLines={1}
+            ellipsizeMode="tail">
+            {contact?.name || 'Medi user'}
+          </Text>
+          <View style={styles.statusRow}>
+            <PresenceIndicator
+              online={online}
+              size={8}
+              onlineColor={onlinePresenceColor}
+              offlineColor={theme.offlineDot}
+            />
+            <Animated.Text
+              style={[
+                styles.statusText,
+                { color: online ? onlinePresenceColor : theme.muted },
+                { opacity: zegoStatus === 'ready' ? statusOpacity : 1 },
+              ]}>{callStatusText}</Animated.Text>
+          </View>
         </View>
       </View>
 
-      {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
+      <View style={styles.headerActions}>
+        {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
         invitees={invitee}
         isVideoCall={false}
-        text={'\u260E'}
         textColor={theme.primaryLight}
-        fontSize={18}
-        width={38}
-        height={38}
+        fontSize={22}
+        width={44}
+        height={44}
         backgroundColor={theme.separatorBg}
         borderColor={theme.line}
         borderWidth={1}
-        borderRadius={12}
+        borderRadius={22}
         callName={contact?.name || 'Medi user'}
         onWillPressed={() => canInvite}
       /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Voice call unavailable" text={'\u260E'} />}
-      {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
+        {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
         invitees={invitee}
         isVideoCall
-        text={'\u25A3'}
         textColor={theme.primaryLight}
-        fontSize={18}
-        width={38}
-        height={38}
+        fontSize={22}
+        width={44}
+        height={44}
         backgroundColor={theme.separatorBg}
         borderColor={theme.line}
         borderWidth={1}
-        borderRadius={12}
+        borderRadius={22}
         callName={contact?.name || 'Medi user'}
         onWillPressed={() => canInvite}
-      /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Video call unavailable" text={'\u25A3'} />}
+        /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Video call unavailable" text={'\u25A3'} />}
+      </View>
     </View>
   );
 }
@@ -127,7 +183,7 @@ function UnavailableCallButton({ theme, status, onRetry, label, text }) {
       onPress={onRetry}
       accessibilityLabel={canRetry ? 'Retry call service connection' : label}
       style={[
-        styles.action,
+        styles.headerActionButton,
         styles.unavailableAction,
         { backgroundColor: theme.separatorBg, borderColor: theme.line },
       ]}>
@@ -158,6 +214,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 14,
   },
+  userSection: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   identity: {
     flex: 1,
     minWidth: 0,
@@ -178,22 +240,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  action: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+    flexShrink: 0,
+  },
+  headerActionButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unavailableAction: {
+    opacity: 0.45,
+  },
+  callGlyph: {
+    fontSize: 22,
+  },
+  backAction: {
     width: 38,
     height: 38,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
-  },
-  unavailableAction: {
-    opacity: 0.45,
-  },
-  callGlyph: {
-    fontSize: 18,
-  },
-  backAction: {
     marginLeft: 0,
     marginRight: 10,
   },

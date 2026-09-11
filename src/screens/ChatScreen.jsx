@@ -40,7 +40,9 @@ import { createSocket } from '../services/socketService';
 import { vars } from 'nativewind';
 import { getChatTheme } from '../theme/chatTheme';
 import {
+  loadCachedConversations,
   loadCachedChatUsers,
+  saveCachedConversations,
   saveCachedChatUsers,
 } from '../storage/chatStorage';
 
@@ -248,13 +250,15 @@ export default function ChatScreen({
     if (showLoading) setLoadingConversations(true);
     try {
       const value = await getConversations(token);
-      setConversations(Array.isArray(value) ? value : []);
+      const nextConversations = Array.isArray(value) ? value : [];
+      setConversations(nextConversations);
+      saveCachedConversations(currentUserId, nextConversations);
     } catch (error) {
       onErrorRef.current?.(error);
     } finally {
       setLoadingConversations(false);
     }
-  }, [token]);
+  }, [currentUserId, token]);
 
   useEffect(() => {
     onErrorRef.current = onError;
@@ -322,14 +326,30 @@ export default function ChatScreen({
     return () => {
       clearTimeout(refreshTimer);
       socket.off('presence:update', updatePresence);
-      socket.disconnect();
+      socket.off('chat:message', refreshList);
+      socket.off('connect', refreshList);
     };
   }, [currentUserId, token, refreshConversations]);
 
   useEffect(() => {
-    refreshConversations();
-    return undefined;
-  }, [refreshConversations]);
+    let mounted = true;
+    setConversations([]);
+    setLoadingConversations(true);
+
+    async function hydrateConversations() {
+      const cached = await loadCachedConversations(currentUserId);
+      if (!mounted) return;
+      if (cached.length) {
+        setConversations(cached);
+        setLoadingConversations(false);
+      }
+      refreshConversations(false);
+    }
+
+    if (currentUserId) hydrateConversations();
+    else setLoadingConversations(false);
+    return () => { mounted = false; };
+  }, [currentUserId, refreshConversations]);
 
   useEffect(() => {
     let mounted = true;

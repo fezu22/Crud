@@ -70,7 +70,7 @@ import {
   saveSession,
 } from './src/storage/sessionStorage';
 import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
-import { createSocket } from './src/services/socketService';
+import { createSocket, disconnectSocket } from './src/services/socketService';
 import {
   initializeZegoCallInvitations,
   uninitializeZegoCallInvitations,
@@ -297,8 +297,13 @@ function AppContent() {
   }, [profileUserId]);
   useEffect(() => {
     if (!token) return undefined;
-    const id = setInterval(() => pingActive(token).catch(() => {}), 15000);
+    const id = setInterval(() => pingActive(token).catch(() => {}), 25000);
     return () => clearInterval(id);
+  }, [token]);
+  useEffect(() => {
+    if (!token) return undefined;
+    createSocket(token);
+    return () => disconnectSocket();
   }, [token]);
   useEffect(() => {
     if (!token || !zegoUserId) {
@@ -352,7 +357,6 @@ function AppContent() {
     socket.on('chat:message', handleChatMessage);
     return () => {
       socket.off('chat:message', handleChatMessage);
-      socket.disconnect();
     };
   }, [preferences.notifications, preferences.ready, token, user]);
   useEffect(() => () => {

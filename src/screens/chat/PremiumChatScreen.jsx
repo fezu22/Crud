@@ -295,6 +295,7 @@ export default function PremiumChatScreen({
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [cacheHydrated, setCacheHydrated] = useState(false);
   const [sendingText, setSendingText] = useState(false);
   const [contactOnline, setContactOnline] = useState(Boolean(contact?.online));
   const [contactLastSeen, setContactLastSeen] = useState(contact?.lastSeenAt || null);
@@ -322,6 +323,7 @@ export default function PremiumChatScreen({
   const listRef = useRef(null);
   const nearBottom = useRef(true);
   const onErrorRef = useRef(onError);
+  const hydratedConversationRef = useRef(null);
 
   const jumpOpacity = useRef(
     new Animated.Value(0),
@@ -365,7 +367,6 @@ export default function PremiumChatScreen({
 
     return () => {
       socket.off('presence:update', onPresenceUpdate);
-      socket.disconnect();
     };
   }, [contactId, currentUserId, token]);
 
@@ -414,7 +415,6 @@ export default function PremiumChatScreen({
     socket.on('chat:message-updated', onChatMessageUpdated);
     return () => {
       socket.emit('chat:leave', { conversationId });
-      socket.disconnect();
       socket.off('chat:message', onChatMessage);
       socket.off('chat:message-deleted', onChatMessageDeleted);
       socket.off('chat:message-updated', onChatMessageUpdated);
@@ -488,18 +488,25 @@ export default function PremiumChatScreen({
 
     let mounted = true;
 
+    setMessages([]);
+    setCacheHydrated(false);
+    hydratedConversationRef.current = null;
     setLoading(true);
 
-    loadCachedMessages(conversationId).then(cached => {
-      if (mounted && cached.length) {
-        setMessages(cached);
-        setLoading(false);
-      }
-    });
+    async function hydrateMessages() {
+      const cached = await loadCachedMessages(currentUserId, conversationId);
+      if (!mounted) return;
 
-    // Socket.IO keeps this conversation current. Only fetch the database once
-    // when opening the chat, instead of polling it every few seconds.
-    loadServerMessages().finally(() => {
+      if (cached.length) setMessages(cached);
+      hydratedConversationRef.current = conversationId;
+      setCacheHydrated(true);
+      // Socket.IO keeps this conversation current. Fetch once after the cache
+      // has painted instead of blocking the initial chat screen.
+      setLoading(false);
+      await loadServerMessages();
+    }
+
+    hydrateMessages().finally(() => {
       if (mounted) setLoading(false);
     });
 
@@ -508,15 +515,16 @@ export default function PremiumChatScreen({
     };
   }, [
     conversationId,
+    currentUserId,
     loadServerMessages,
     syncWithServer,
   ]);
 
   useEffect(() => {
-    if (conversationId && messages.length) {
-      saveCachedMessages(conversationId, messages);
+    if (cacheHydrated && hydratedConversationRef.current === conversationId) {
+      saveCachedMessages(currentUserId, conversationId, messages);
     }
-  }, [conversationId, messages]);
+  }, [cacheHydrated, conversationId, currentUserId, messages]);
 
   useEffect(() => {
     const timers = statusTimers.current;
