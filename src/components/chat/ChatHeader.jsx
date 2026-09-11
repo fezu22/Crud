@@ -41,6 +41,7 @@ export default function ChatHeader({
   onBack,
   zegoStatus = 'idle',
   onRetryZego,
+  onStartCall,
 }) {
   const online = Boolean(contact?.online);
   const onlinePresenceColor = '#22c55e';
@@ -154,7 +155,11 @@ export default function ChatHeader({
         borderWidth={1}
         borderRadius={22}
         callName={contact?.name || 'Medi user'}
-        onWillPressed={() => canInvite}
+        onWillPressed={() => {
+          if (!canInvite) return false;
+          onStartCall?.('voice');
+          return false;
+        }}
       /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Voice call unavailable" text={'\u260E'} />}
         {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
         invitees={invitee}
@@ -168,7 +173,11 @@ export default function ChatHeader({
         borderWidth={1}
         borderRadius={22}
         callName={contact?.name || 'Medi user'}
-        onWillPressed={() => canInvite}
+        onWillPressed={() => {
+          if (!canInvite) return false;
+          onStartCall?.('video');
+          return false;
+        }}
         /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Video call unavailable" text={'\u25A3'} />}
       </View>
     </View>

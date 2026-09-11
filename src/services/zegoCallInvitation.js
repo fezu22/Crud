@@ -7,6 +7,16 @@ let initializedUserId = null;
 let initializationPromise = null;
 let initializingUserId = null;
 let lifecycleGeneration = 0;
+const callEventListeners = new Set();
+
+function notifyCallEvent(type) {
+  callEventListeners.forEach(listener => listener(type));
+}
+
+export function subscribeToZegoCallEvents(listener) {
+  callEventListeners.add(listener);
+  return () => callEventListeners.delete(listener);
+}
 
 export async function initializeZegoCallInvitations(authToken, user) {
   const userId = getZegoUserId(user);
@@ -48,6 +58,13 @@ export async function initializeZegoCallInvitations(authToken, user) {
       userId,
       getZegoUserName(user),
       [ZIM],
+      {
+        onOutgoingCallAccepted: () => notifyCallEvent('accepted'),
+        onOutgoingCallDeclined: () => notifyCallEvent('declined'),
+        onOutgoingCallRejectedCauseBusy: () => notifyCallEvent('busy'),
+        onOutgoingCallTimeout: () => notifyCallEvent('timeout'),
+        onOutgoingCallCancelButtonPressed: () => notifyCallEvent('canceled'),
+      },
     );
     if (generation !== lifecycleGeneration) {
       ZegoUIKitPrebuiltCallService.uninit();

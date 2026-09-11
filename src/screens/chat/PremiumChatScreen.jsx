@@ -34,6 +34,8 @@ import {
   pick,
   types,
 } from '@react-native-documents/picker';
+import { useNavigation } from '@react-navigation/native';
+import ZegoUIKitPrebuiltCallService from '@zegocloud/zego-uikit-prebuilt-call-rn';
 
 import {
   deleteChatMessages,
@@ -49,6 +51,7 @@ import { createSocket } from '../../services/socketService';
 import AttachmentSheet from '../../components/chat/AttachmentSheet';
 import ChatBackground from '../../components/chat/ChatBackground';
 import ChatHeader from '../../components/chat/ChatHeader';
+import SweetAlertModal from '../../components/common/SweetAlertModal';
 import DocumentBubble from '../../components/chat/DocumentBubble';
 import DocumentPreviewModal from '../../components/chat/DocumentPreviewModal';
 import ImageMessage from '../../components/chat/ImageMessage';
@@ -66,6 +69,8 @@ import {
 
 import { FadeSlideIn } from '../../components/motion';
 import { getChatTheme } from '../../theme/chatTheme';
+import { getZegoUserId, getZegoUserName } from '../../services/zegoService';
+import { subscribeToZegoCallEvents } from '../../services/zegoCallInvitation';
 import {
   loadCachedMessages,
   saveCachedMessages,
@@ -274,6 +279,8 @@ export default function PremiumChatScreen({
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const [editingMessage, setEditingMessage] = useState(null);
   const [deletePromptVisible, setDeletePromptVisible] = useState(false);
+  const [outgoingCall, setOutgoingCall] = useState(null);
+  const [callError, setCallError] = useState(null);
 
   const statusTimers = useRef([]);
   const listRef = useRef(null);
@@ -286,6 +293,7 @@ export default function PremiumChatScreen({
   ).current;
 
   const theme = getChatTheme(themeMode);
+  const navigation = useNavigation();
 
   const currentUserId =
     user?.id || user?._id;
@@ -297,6 +305,45 @@ export default function PremiumChatScreen({
     .map(String)
     .sort()
     .join('_');
+
+  const startCall = useCallback(async type => {
+    if (zegoStatus !== 'ready' || outgoingCall || !contactId) {
+      setCallError(zegoStatus === 'ready' ? 'A call is already starting.' : 'Call service is still connecting. Please try again shortly.');
+      return;
+    }
+
+    const isVideoCall = type === 'video';
+    const invitees = [{
+      userID: getZegoUserId(contact),
+      userName: getZegoUserName(contact),
+    }];
+    setOutgoingCall({ type, contact });
+    try {
+      await ZegoUIKitPrebuiltCallService.sendCallInvitation(
+        invitees,
+        isVideoCall,
+        navigation,
+        { callName: contact?.name || 'Medi user' },
+      );
+    } catch (error) {
+      setOutgoingCall(null);
+      setCallError(error?.message || 'Could not start the call.');
+    }
+  }, [contact, contactId, navigation, outgoingCall, zegoStatus]);
+
+  useEffect(() => navigation.addListener('focus', () => {
+    setOutgoingCall(null);
+  }), [navigation]);
+
+  useEffect(() => subscribeToZegoCallEvents(event => {
+    setOutgoingCall(null);
+    const callMessages = {
+      declined: 'Call declined.',
+      busy: 'The user is busy on another call.',
+      timeout: 'No answer.',
+    };
+    if (callMessages[event]) setCallError(callMessages[event]);
+  }), []);
 
   const syncWithServer = Boolean(
     token &&
@@ -1250,6 +1297,7 @@ export default function PremiumChatScreen({
             onBack={onBack}
             zegoStatus={zegoStatus}
             onRetryZego={onRetryZego}
+            onStartCall={startCall}
           />
         )}
 
@@ -1319,6 +1367,17 @@ export default function PremiumChatScreen({
             </Text>
           </TouchableOpacity>
         </Animated.View>
+
+        <SweetAlertModal
+          visible={Boolean(callError)}
+          type="danger"
+          theme={theme}
+          title="Call unavailable"
+          message={callError}
+          primaryText="Close"
+          cancelText={null}
+          onPrimary={() => setCallError(null)}
+        />
 
         <View
           style={[

@@ -45,6 +45,7 @@ import { DocumentIcon } from '../components/chat/ChatIcons';
 import { createSocket } from '../services/socketService';
 import { vars } from 'nativewind';
 import { getChatTheme } from '../theme/chatTheme';
+import SweetAlertModal from '../components/common/SweetAlertModal';
 import {
   clearCachedMessages,
   conversationKeyFor,
@@ -248,6 +249,8 @@ export default function ChatScreen({
   const [adminContact, setAdminContact] = useState(null);
   const [active, setActive] = useState(null);
   const [selectedConversationIds, setSelectedConversationIds] = useState([]);
+  const [deleteDialog, setDeleteDialog] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [pickerUsers, setPickerUsers] = useState([]);
@@ -266,6 +269,7 @@ export default function ChatScreen({
   }, []);
 
   const deleteSelectedConversations = useCallback(async deleteForEveryone => {
+    setIsDeleting(true);
     const ids = [...selectedConversationIds];
     const succeeded = [];
     const failures = [];
@@ -300,44 +304,19 @@ export default function ChatScreen({
 
     if (failures.length) {
       onErrorRef.current?.(failures[0]);
+      setDeleteDialog({ step: 'error', message: failures[0]?.message || 'Please try again.' });
+    } else if (succeeded.length) {
+      setDeleteDialog({ step: 'success', count: succeeded.length });
     }
+    setIsDeleting(false);
   }, [currentUserId, selectedConversationIds, token]);
 
   const confirmDeleteSelected = useCallback(() => {
     const count = selectedConversationIds.length;
     if (!count) return;
 
-    Alert.alert(
-      'Delete selected chats?',
-      `${count} chat${count === 1 ? '' : 's'} selected.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete from here',
-          onPress: () => Alert.alert(
-            'Delete from here?',
-            'This removes the selected chats only from your account.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete', style: 'destructive', onPress: () => deleteSelectedConversations(false) },
-            ],
-          ),
-        },
-        {
-          text: 'Delete all chat',
-          style: 'destructive',
-          onPress: () => Alert.alert(
-            'Delete all messages?',
-            'This permanently removes the selected chat history for both participants.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete all', style: 'destructive', onPress: () => deleteSelectedConversations(true) },
-            ],
-          ),
-        },
-      ],
-    );
-  }, [deleteSelectedConversations, selectedConversationIds.length]);
+    setDeleteDialog({ step: 'choose', count });
+  }, [selectedConversationIds.length]);
 
   const refreshConversations = useCallback(async (showLoading = true) => {
     if (showLoading) setLoadingConversations(true);
@@ -659,6 +638,60 @@ export default function ChatScreen({
           Tap the + button above to choose any registered user.
         </Text>
       </View> : null}
+
+      <SweetAlertModal
+        visible={deleteDialog?.step === 'choose'}
+        type="warning"
+        theme={theme}
+        title={`Delete selected chat${deleteDialog?.count === 1 ? '' : 's'}?`}
+        message="Choose what you want to remove."
+        primaryText="Delete from here"
+        secondaryText="Delete all chat"
+        onPrimary={() => setDeleteDialog({ step: 'confirm-local' })}
+        onSecondary={() => setDeleteDialog({ step: 'confirm-all' })}
+        onCancel={() => setDeleteDialog(null)}
+      />
+      <SweetAlertModal
+        visible={deleteDialog?.step === 'confirm-local'}
+        type="warning"
+        theme={theme}
+        title="Delete from here?"
+        message="This removes the selected chats only from your account."
+        primaryText="Delete"
+        onPrimary={() => deleteSelectedConversations(false)}
+        onCancel={() => setDeleteDialog(null)}
+        loading={isDeleting}
+      />
+      <SweetAlertModal
+        visible={deleteDialog?.step === 'confirm-all'}
+        type="danger"
+        theme={theme}
+        title="Delete entire chat?"
+        message="This permanently deletes the selected chat history for both participants. This cannot be undone."
+        primaryText="Delete all"
+        onPrimary={() => deleteSelectedConversations(true)}
+        onCancel={() => setDeleteDialog(null)}
+        loading={isDeleting}
+      />
+      <SweetAlertModal
+        visible={deleteDialog?.step === 'success'}
+        type="success"
+        theme={theme}
+        title={`Chat${deleteDialog?.count === 1 ? '' : 's'} deleted`}
+        primaryText="Done"
+        cancelText={null}
+        onPrimary={() => setDeleteDialog(null)}
+      />
+      <SweetAlertModal
+        visible={deleteDialog?.step === 'error'}
+        type="danger"
+        theme={theme}
+        title="Could not delete chat"
+        message={deleteDialog?.message}
+        primaryText="Close"
+        cancelText={null}
+        onPrimary={() => setDeleteDialog(null)}
+      />
 
       <UserPicker
         theme={theme}
