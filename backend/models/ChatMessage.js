@@ -28,7 +28,7 @@ const ChatMessageSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ['text', 'image', 'video', 'document', 'voice'],
+      enum: ['text', 'image', 'video', 'document', 'voice', 'call'],
       default: 'text',
     },
 
@@ -105,6 +105,16 @@ const ChatMessageSchema = new mongoose.Schema(
       default: 0,
     },
 
+    callType: { type: String, enum: ['voice', 'video'], default: null },
+    callSessionId: { type: String, default: null },
+    callerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    receiverId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    callStatus: { type: String, enum: ['answered', 'missed', 'declined', 'cancelled', 'failed', 'ended'], default: null },
+    startedAt: { type: Date, default: null },
+    answeredAt: { type: Date, default: null },
+    endedAt: { type: Date, default: null },
+    durationSeconds: { type: Number, default: 0, min: 0 },
+
     caption: {
       type: String,
       default: '',
@@ -143,6 +153,10 @@ ChatMessageSchema.index({
   conversationId: 1,
   createdAt: 1,
 });
+ChatMessageSchema.index(
+  { conversationId: 1, callSessionId: 1 },
+  { unique: true, partialFilterExpression: { type: 'call', callSessionId: { $type: 'string' } } },
+);
 
 module.exports = mongoose.model(
   'ChatMessage',

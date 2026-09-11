@@ -375,6 +375,43 @@ router.get(
   },
 );
 
+router.post('/call-event', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const recipientId = String(body.recipientId || '');
+    const callSessionId = String(body.callSessionId || '').trim();
+    const callType = String(body.callType || '');
+    const callStatus = String(body.callStatus || '');
+    if (!mongoose.Types.ObjectId.isValid(recipientId) || !callSessionId || !['voice', 'video'].includes(callType) || !['answered', 'missed', 'declined', 'cancelled', 'failed', 'ended'].includes(callStatus)) {
+      return res.status(400).json({ message: 'Invalid call event.' });
+    }
+    const recipient = await User.findById(recipientId).select('_id');
+    if (!recipient || String(recipient._id) === String(req.user._id)) return res.status(404).json({ message: 'Chat recipient not found' });
+    const asDate = value => value ? new Date(value) : null;
+    const startedAt = asDate(body.startedAt) || new Date();
+    const answeredAt = asDate(body.answeredAt);
+    const endedAt = asDate(body.endedAt);
+    if ([startedAt, answeredAt, endedAt].some(value => value && Number.isNaN(value.getTime()))) return res.status(400).json({ message: 'Invalid call timestamp.' });
+    const durationSeconds = answeredAt ? Math.max(0, Number(body.durationSeconds) || 0) : 0;
+    const conversationId = conversationIdFor(req.user._id, recipient._id);
+    const data = {
+      sender: req.user._id, recipient: recipient._id, receiver: recipient._id, conversationId,
+      type: 'call', messageType: 'text', callType, callSessionId, callerId: req.user._id,
+      receiverId: recipient._id, callStatus, startedAt, answeredAt, endedAt, durationSeconds,
+      text: '', deliveryStatus: 'sent',
+    };
+    const message = await ChatMessage.findOneAndUpdate(
+      { conversationId, callSessionId, type: 'call' },
+      { $set: data }, { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    const event = { ...message.toObject(), fromName: req.user.name || req.user.email || 'Medi user' };
+    const io = req.app.get('io');
+    io?.to(`conversation:${conversationId}`).emit('chat:message', event);
+    io?.to(`user:${String(recipient._id)}`).emit('chat:message', event);
+    return res.status(201).json(message);
+  } catch (error) { next(error); }
+});
+
 router.post(
   '/:userId/attachments',
   upload.single('file'),

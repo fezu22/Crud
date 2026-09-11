@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PresenceIndicator from './PresenceIndicator';
 import { PressableScale } from '../motion';
-import { ZegoSendCallInvitationButton } from '@zegocloud/zego-uikit-prebuilt-call-rn';
-import { getZegoUserId, getZegoUserName } from '../../services/zegoService';
+import { MoreIcon, PhoneIcon, VideoIcon } from './ChatIcons';
 
 function initialsOf(name) {
   return String(name || 'U')
@@ -40,18 +39,14 @@ export default function ChatHeader({
   currentUserId,
   onBack,
   zegoStatus = 'idle',
-  onRetryZego,
   onStartCall,
 }) {
   const online = Boolean(contact?.online);
   const onlinePresenceColor = '#22c55e';
   const contactId = contact?.id || contact?._id;
-  const invitee = contactId
-    ? [{ userID: getZegoUserId(contact), userName: getZegoUserName(contact) }]
-    : [];
   const canInvite =
     zegoStatus === 'ready' &&
-    invitee.length > 0 &&
+    Boolean(contactId) &&
     String(contactId) !== String(currentUserId);
   const lastSeenText = formatLastSeen(contact?.lastSeenAt || contact?.lastActiveAt);
   const [showLastSeen, setShowLastSeen] = useState(true);
@@ -98,6 +93,9 @@ export default function ChatHeader({
     : zegoStatus === 'initializing'
       ? 'Connecting call service…'
       : presenceText;
+  const startCall = type => {
+    if (canInvite) onStartCall?.(type);
+  };
 
   return (
     <View
@@ -143,59 +141,36 @@ export default function ChatHeader({
       </View>
 
       <View style={styles.headerActions}>
-        {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
-        invitees={invitee}
-        isVideoCall={false}
-        textColor={theme.primaryLight}
-        fontSize={22}
-        width={44}
-        height={44}
-        backgroundColor={theme.separatorBg}
-        borderColor={theme.line}
-        borderWidth={1}
-        borderRadius={22}
-        callName={contact?.name || 'Medi user'}
-        onWillPressed={() => {
-          if (!canInvite || typeof onStartCall !== 'function') return Promise.resolve(false);
-          return onStartCall('voice').then(() => false).catch(() => false);
-        }}
-      /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Voice call unavailable" text={'\u260E'} />}
-        {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
-        invitees={invitee}
-        isVideoCall
-        textColor={theme.primaryLight}
-        fontSize={22}
-        width={44}
-        height={44}
-        backgroundColor={theme.separatorBg}
-        borderColor={theme.line}
-        borderWidth={1}
-        borderRadius={22}
-        callName={contact?.name || 'Medi user'}
-        onWillPressed={() => {
-          if (!canInvite || typeof onStartCall !== 'function') return Promise.resolve(false);
-          return onStartCall('video').then(() => false).catch(() => false);
-        }}
-        /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Video call unavailable" text={'\u25A3'} />}
+        <TouchableOpacity
+          disabled={!canInvite}
+          onPress={() => startCall('voice')}
+          accessibilityLabel="Start voice call"
+          style={[
+            styles.headerActionButton,
+            { backgroundColor: theme.separatorBg, borderColor: theme.line },
+            !canInvite && styles.unavailableAction,
+          ]}>
+          <PhoneIcon color={theme.primaryLight} size={23} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          disabled={!canInvite}
+          onPress={() => startCall('video')}
+          accessibilityLabel="Start video call"
+          style={[
+            styles.headerActionButton,
+            { backgroundColor: theme.separatorBg, borderColor: theme.line },
+            !canInvite && styles.unavailableAction,
+          ]}>
+          <VideoIcon color={theme.primaryLight} size={23} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          disabled
+          accessibilityLabel="Chat actions"
+          style={[styles.headerActionButton, { backgroundColor: theme.separatorBg, borderColor: theme.line }]}>
+          <MoreIcon color={theme.primaryLight} size={22} />
+        </TouchableOpacity>
       </View>
     </View>
-  );
-}
-
-function UnavailableCallButton({ theme, status, onRetry, label, text }) {
-  const canRetry = status === 'error' && typeof onRetry === 'function';
-  return (
-    <TouchableOpacity
-      disabled={!canRetry}
-      onPress={onRetry}
-      accessibilityLabel={canRetry ? 'Retry call service connection' : label}
-      style={[
-        styles.headerActionButton,
-        styles.unavailableAction,
-        { backgroundColor: theme.separatorBg, borderColor: theme.line },
-      ]}>
-      <Text style={[styles.callGlyph, { color: theme.primaryLight }]}>{text}</Text>
-    </TouchableOpacity>
   );
 }
 
@@ -264,9 +239,6 @@ const styles = StyleSheet.create({
   },
   unavailableAction: {
     opacity: 0.45,
-  },
-  callGlyph: {
-    fontSize: 22,
   },
   backAction: {
     width: 38,

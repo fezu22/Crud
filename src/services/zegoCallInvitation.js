@@ -33,8 +33,8 @@ function logInitializationFailure(stage, error) {
   });
 }
 
-function notifyCallEvent(type) {
-  callEventListeners.forEach(listener => listener(type));
+function notifyCallEvent(type, details) {
+  callEventListeners.forEach(listener => listener(type, details));
 }
 
 export function subscribeToZegoCallEvents(listener) {
@@ -89,9 +89,15 @@ export async function initializeZegoCallInvitations(authToken, user) {
       // Prebuilt init observes that completed login and installs its call hooks.
       ZegoUIKit.installPlugins([ZIM]);
       const signalingPlugin = ZegoUIKit.getSignalingPlugin();
+      if (
+        !signalingPlugin ||
+        typeof signalingPlugin.init !== 'function' ||
+        typeof signalingPlugin.login !== 'function'
+      ) {
+        throw new Error('The installed ZEGOCLOUD signaling plugin is unavailable.');
+      }
       signalingPlugin.init(ZEGO_APP_ID, '');
       signalingInitialized = true;
-      signalingPlugin.onRequireNewToken('MediZegoToken', provideFreshToken);
       await signalingPlugin.login(userId, getZegoUserName(user), initialToken.token);
       if (generation !== lifecycleGeneration) return;
 
@@ -102,11 +108,14 @@ export async function initializeZegoCallInvitations(authToken, user) {
         getZegoUserName(user),
         [ZIM],
         {
-          onOutgoingCallAccepted: () => notifyCallEvent('accepted'),
-          onOutgoingCallDeclined: () => notifyCallEvent('declined'),
-          onOutgoingCallRejectedCauseBusy: () => notifyCallEvent('busy'),
-          onOutgoingCallTimeout: () => notifyCallEvent('timeout'),
-          onOutgoingCallCancelButtonPressed: () => notifyCallEvent('canceled'),
+          onOutgoingCallAccepted: (...details) => notifyCallEvent('accepted', details),
+          onOutgoingCallDeclined: (...details) => notifyCallEvent('declined', details),
+          onOutgoingCallRejectedCauseBusy: (...details) => notifyCallEvent('busy', details),
+          onOutgoingCallTimeout: (...details) => notifyCallEvent('timeout', details),
+          onOutgoingCallCancelButtonPressed: (...details) => notifyCallEvent('canceled', details),
+          requireConfig: () => ({
+            onCallEnd: (...details) => notifyCallEvent('ended', details),
+          }),
         },
       );
     } catch (error) {
@@ -144,9 +153,12 @@ export function uninitializeZegoCallInvitations() {
     // Prebuilt init did not complete, so it cannot tear down the direct,
     // token-authenticated ZIM login started above.
     const signalingPlugin = ZegoUIKit.getSignalingPlugin();
-    signalingPlugin.onRequireNewToken('MediZegoToken');
-    signalingPlugin.logout()?.catch?.(() => {});
-    signalingPlugin.uninit();
+    if (typeof signalingPlugin?.logout === 'function') {
+      signalingPlugin.logout()?.catch?.(() => {});
+    }
+    if (typeof signalingPlugin?.uninit === 'function') {
+      signalingPlugin.uninit();
+    }
   }
   ZegoUIKit.onTokenProvide(undefined);
   initializedUserId = null;

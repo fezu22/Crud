@@ -58,12 +58,12 @@ export async function clearCachedMessages(userId, conversationId) {
 
 export function loadCachedChatUsers(userId) {
   if (!userId) return Promise.resolve([]);
-  return readJson(usersKey(String(userId)), []);
+  return readJson(usersKey(String(userId)), []).then(value => Array.isArray(value) ? value : (value.users || []));
 }
 
 export async function saveCachedChatUsers(userId, users) {
   if (!userId || !Array.isArray(users)) return;
-  await writeJson(usersKey(String(userId)), users);
+  await writeJson(usersKey(String(userId)), { users, fetchedAt: Date.now() });
 }
 
 export function loadCachedConversations(userId) {

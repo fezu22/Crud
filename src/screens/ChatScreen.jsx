@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   BackHandler,
   FlatList,
@@ -255,6 +254,7 @@ export default function ChatScreen({
   const [query, setQuery] = useState('');
   const [pickerUsers, setPickerUsers] = useState([]);
   const [pickerLoading, setPickerLoading] = useState(false);
+  const pickerRequestRef = useRef(false);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const onErrorRef = useRef(onError);
   const currentUserId = user?.id || user?._id;
@@ -313,10 +313,28 @@ export default function ChatScreen({
 
   const confirmDeleteSelected = useCallback(() => {
     const count = selectedConversationIds.length;
-    if (!count) return;
+    if (!count || deleteDialog || isDeleting) return;
 
     setDeleteDialog({ step: 'choose', count });
-  }, [selectedConversationIds.length]);
+  }, [deleteDialog, isDeleting, selectedConversationIds.length]);
+
+  const openUserPicker = useCallback(async () => {
+    if (pickerOpen || pickerRequestRef.current || !currentUserId) return;
+    pickerRequestRef.current = true;
+    setQuery('');
+    setPickerOpen(true);
+    const cached = await loadCachedChatUsers(currentUserId);
+    if (cached.length) setPickerUsers(cached.filter(item => isRealChatUser(item, currentUserId)));
+    else setPickerLoading(true);
+    getChatUsers(token, '')
+      .then(users => {
+        const next = (Array.isArray(users) ? users : []).filter(item => isRealChatUser(item, currentUserId));
+        setPickerUsers(next);
+        saveCachedChatUsers(currentUserId, next);
+      })
+      .catch(error => { if (!cached.length) onErrorRef.current?.(error); })
+      .finally(() => { pickerRequestRef.current = false; setPickerLoading(false); });
+  }, [currentUserId, pickerOpen, token]);
 
   const refreshConversations = useCallback(async (showLoading = true) => {
     if (showLoading) setLoadingConversations(true);
@@ -337,7 +355,7 @@ export default function ChatScreen({
   }, [onError]);
 
   useEffect(() => {
-    if (!pickerOpen || !currentUserId) return undefined;
+    if (!pickerOpen || !currentUserId || !query) return undefined;
 
     let mounted = true;
     const timer = setTimeout(async () => {
@@ -449,6 +467,11 @@ export default function ChatScreen({
         return true;
       }
 
+      if (deleteDialog) {
+        setDeleteDialog(null);
+        return true;
+      }
+
       if (pickerOpen) {
         setPickerOpen(false);
         return true;
@@ -465,7 +488,7 @@ export default function ChatScreen({
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
     return () => subscription.remove();
-  }, [active, pickerOpen, refreshConversations, selectedConversationIds.length]);
+  }, [active, deleteDialog, pickerOpen, refreshConversations, selectedConversationIds.length]);
 
   if (active) {
     return (
@@ -523,7 +546,7 @@ export default function ChatScreen({
               setQuery('');
               setPickerUsers([]);
               setPickerLoading(true);
-              setPickerOpen(true);
+              openUserPicker();
             }}
             accessibilityLabel="Start a new chat">
             <Text className="text-3xl font-light" style={{ color: theme.outgoingInk }}>+</Text>
@@ -607,21 +630,6 @@ export default function ChatScreen({
               <View
                 className="items-center"
                 style={selected ? { display: 'none' } : undefined}>
-                <TouchableOpacity
-                  style={{ display: 'none' }}
-                  onPress={() => Alert.alert('Delete chat?', `Remove this chat with ${item.user.name || 'this user'} from your recent chats?`, [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Delete', style: 'destructive', onPress: async () => {
-                      try {
-                        await deleteConversation(item.user.id, token);
-                        setConversations(current => current.filter(row => String(row.user?.id) !== String(item.user.id)));
-                      } catch (error) { onErrorRef.current?.(error); }
-                    } },
-                  ])}
-                  hitSlop={10}
-                  accessibilityLabel={`Delete chat with ${item.user.name || 'user'}`}>
-                  <Text className="text-xl text-danger">×</Text>
-                </TouchableOpacity>
                 <Text className="text-2xl text-brand">›</Text>
               </View>
             </TouchableOpacity>

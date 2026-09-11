@@ -361,6 +361,15 @@ export async function sendChatMessage(userId, textOrPayload, token, extra = {}) 
   });
 }
 
+export async function saveCallEvent(callEvent, token) {
+  return request('/chat/call-event', {
+    method: 'POST',
+    token,
+    body: callEvent,
+    fallbackMessage: 'Could not save call history',
+  });
+}
+
 function isVideoFile(file) {
   const type = file.type || '';
   const name = file.fileName || file.name || '';

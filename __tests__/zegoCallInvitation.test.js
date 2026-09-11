@@ -5,7 +5,6 @@ const mockUninit = jest.fn();
 const mockOnTokenProvide = jest.fn();
 const mockSignalingLogin = jest.fn(() => Promise.resolve());
 const mockSignalingInit = jest.fn();
-const mockOnRequireNewToken = jest.fn();
 
 jest.mock('@zegocloud/zego-uikit-rn', () => ({
   __esModule: true,
@@ -15,7 +14,6 @@ jest.mock('@zegocloud/zego-uikit-rn', () => ({
     getSignalingPlugin: () => ({
       init: mockSignalingInit,
       login: mockSignalingLogin,
-      onRequireNewToken: mockOnRequireNewToken,
       logout: jest.fn(() => Promise.resolve()),
       uninit: jest.fn(),
     }),
@@ -61,5 +59,4 @@ test('registers the ZIM module namespace required by ZegoUIKit', async () => {
     'Faraz',
     'zego-token',
   );
-  expect(mockOnRequireNewToken).toHaveBeenCalledWith('MediZegoToken', expect.any(Function));
 });
