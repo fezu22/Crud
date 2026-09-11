@@ -6,7 +6,7 @@ const auth = require('../middleware/auth');
 const crypto = require('crypto');
 
 const router = express.Router();
-const appId = Number(process.env.ZEGO_APP_ID || '60432965');
+const appId = Number(process.env.ZEGO_APP_ID || '1460432965');
 
 // Official ZEGOCLOUD Token04 format, matching zego_server_assistant/nodejs.
 function generateToken04(userId, secret, effectiveSeconds = 3600) {

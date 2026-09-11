@@ -319,7 +319,11 @@ function AppContent() {
         if (active) setZegoStatus('ready');
       })
       .catch(error => {
-        console.warn('Could not initialize ZEGOCLOUD calling:', error);
+        console.warn('[ZEGOCLOUD] calling is unavailable', {
+          stage: error?.stage || 'unknown',
+          code: error?.code ?? 'unknown',
+          message: String(error?.message || 'Initialization failed.').slice(0, 240),
+        });
         if (active) setZegoStatus('error');
       });
 

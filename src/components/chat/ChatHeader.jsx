@@ -156,9 +156,8 @@ export default function ChatHeader({
         borderRadius={22}
         callName={contact?.name || 'Medi user'}
         onWillPressed={() => {
-          if (!canInvite) return false;
-          onStartCall?.('voice');
-          return false;
+          if (!canInvite || typeof onStartCall !== 'function') return Promise.resolve(false);
+          return onStartCall('voice').then(() => false).catch(() => false);
         }}
       /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Voice call unavailable" text={'\u260E'} />}
         {zegoStatus === 'ready' ? <ZegoSendCallInvitationButton
@@ -174,9 +173,8 @@ export default function ChatHeader({
         borderRadius={22}
         callName={contact?.name || 'Medi user'}
         onWillPressed={() => {
-          if (!canInvite) return false;
-          onStartCall?.('video');
-          return false;
+          if (!canInvite || typeof onStartCall !== 'function') return Promise.resolve(false);
+          return onStartCall('video').then(() => false).catch(() => false);
         }}
         /> : <UnavailableCallButton theme={theme} status={zegoStatus} onRetry={onRetryZego} label="Video call unavailable" text={'\u25A3'} />}
       </View>

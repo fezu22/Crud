@@ -3,10 +3,23 @@
 const mockInit = jest.fn(() => Promise.resolve());
 const mockUninit = jest.fn();
 const mockOnTokenProvide = jest.fn();
+const mockSignalingLogin = jest.fn(() => Promise.resolve());
+const mockSignalingInit = jest.fn();
+const mockOnRequireNewToken = jest.fn();
 
 jest.mock('@zegocloud/zego-uikit-rn', () => ({
   __esModule: true,
-  default: { onTokenProvide: mockOnTokenProvide },
+  default: {
+    onTokenProvide: mockOnTokenProvide,
+    installPlugins: jest.fn(),
+    getSignalingPlugin: () => ({
+      init: mockSignalingInit,
+      login: mockSignalingLogin,
+      onRequireNewToken: mockOnRequireNewToken,
+      logout: jest.fn(() => Promise.resolve()),
+      uninit: jest.fn(),
+    }),
+  },
 }));
 
 jest.mock('@zegocloud/zego-uikit-prebuilt-call-rn', () => ({
@@ -43,4 +56,10 @@ test('registers the ZIM module namespace required by ZegoUIKit', async () => {
   expect(plugins[0].ZIMConnectionState).toEqual({ connected: 0 });
   expect(plugins[0].default).toBeDefined();
   expect(mockOnTokenProvide).toHaveBeenCalledWith(expect.any(Function));
+  expect(mockSignalingLogin).toHaveBeenCalledWith(
+    '507f1f77bcf86cd799439011',
+    'Faraz',
+    'zego-token',
+  );
+  expect(mockOnRequireNewToken).toHaveBeenCalledWith('MediZegoToken', expect.any(Function));
 });
