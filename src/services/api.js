@@ -299,6 +299,14 @@ export async function deleteConversation(userId, token) {
   });
 }
 
+export async function deleteConversationForEveryone(userId, token) {
+  return request(`/chat/${userId}/conversation/all`, {
+    method: 'DELETE',
+    token,
+    fallbackMessage: 'Failed to delete chat history',
+  });
+}
+
 export async function getAllUsers(token, query = '') {
   return request(
     `/chat/all-users?q=${encodeURIComponent(query)}`,

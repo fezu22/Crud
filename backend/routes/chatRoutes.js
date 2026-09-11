@@ -568,6 +568,46 @@ router.delete('/:userId/conversation', async (req, res, next) => {
   }
 });
 
+// Explicitly removes the entire conversation for both participants. This is
+// intentionally separate from the user-scoped hide route above.
+router.delete('/:userId/conversation/all', async (req, res, next) => {
+  try {
+    const other = await User.findById(req.params.userId).select('_id');
+    if (!other || String(other._id) === String(req.user._id)) {
+      return res.status(404).json({ message: 'Chat recipient not found' });
+    }
+
+    const conversationId = conversationIdFor(req.user._id, other._id);
+    const messages = await ChatMessage.find({ conversationId })
+      .select('_id attachmentFileId')
+      .lean();
+    const bucket = getChatFilesBucket();
+
+    await Promise.all(messages.map(async message => {
+      if (!message.attachmentFileId) return;
+      try {
+        await bucket.delete(message.attachmentFileId);
+      } catch (error) {
+        if (error.codeName !== 'NamespaceNotFound') throw error;
+      }
+    }));
+    await ChatMessage.deleteMany({ conversationId });
+
+    const io = req.app.get('io');
+    const event = { conversationId, userId: String(other._id) };
+    io?.to(`conversation:${conversationId}`).emit('chat:conversation-deleted', event);
+    io?.to(`user:${String(req.user._id)}`).emit('chat:conversation-deleted', event);
+    io?.to(`user:${String(other._id)}`).emit('chat:conversation-deleted', {
+      conversationId,
+      userId: String(req.user._id),
+    });
+
+    return res.json({ message: 'Chat history deleted for everyone' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.delete(
   '/:userId/messages',
   async (req, res, next) => {

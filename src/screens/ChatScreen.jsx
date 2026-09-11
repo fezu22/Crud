@@ -32,7 +32,13 @@ import {
   SkeletonBlock,
 } from '../components/motion';
 import PresenceIndicator from '../components/chat/PresenceIndicator';
-import { deleteConversation, getAdminChat, getChatUsers, getConversations } from '../services/api';
+import {
+  deleteConversation,
+  deleteConversationForEveryone,
+  getAdminChat,
+  getChatUsers,
+  getConversations,
+} from '../services/api';
 import PremiumChatScreen from './chat/PremiumChatScreen';
 import { formatClock } from '../components/chat/MessageBubble';
 import { DocumentIcon } from '../components/chat/ChatIcons';
@@ -40,8 +46,11 @@ import { createSocket } from '../services/socketService';
 import { vars } from 'nativewind';
 import { getChatTheme } from '../theme/chatTheme';
 import {
+  clearCachedMessages,
+  conversationKeyFor,
   loadCachedConversations,
   loadCachedChatUsers,
+  removeCachedConversations,
   saveCachedConversations,
   saveCachedChatUsers,
 } from '../storage/chatStorage';
@@ -238,6 +247,7 @@ export default function ChatScreen({
   const [conversations, setConversations] = useState([]);
   const [adminContact, setAdminContact] = useState(null);
   const [active, setActive] = useState(null);
+  const [selectedConversationIds, setSelectedConversationIds] = useState([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [pickerUsers, setPickerUsers] = useState([]);
@@ -245,6 +255,89 @@ export default function ChatScreen({
   const [loadingConversations, setLoadingConversations] = useState(true);
   const onErrorRef = useRef(onError);
   const currentUserId = user?.id || user?._id;
+
+  const toggleConversationSelection = useCallback(userId => {
+    const id = String(userId);
+    setSelectedConversationIds(current => (
+      current.includes(id)
+        ? current.filter(item => item !== id)
+        : [...current, id]
+    ));
+  }, []);
+
+  const deleteSelectedConversations = useCallback(async deleteForEveryone => {
+    const ids = [...selectedConversationIds];
+    const succeeded = [];
+    const failures = [];
+
+    for (const userId of ids) {
+      try {
+        if (deleteForEveryone) {
+          await deleteConversationForEveryone(userId, token);
+        } else {
+          await deleteConversation(userId, token);
+        }
+        succeeded.push(userId);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+
+    if (succeeded.length) {
+      const removedIds = new Set(succeeded);
+      setConversations(current => current.filter(item => (
+        !removedIds.has(String(item.user?.id || item.user?._id))
+      )));
+      setSelectedConversationIds(current => current.filter(id => !removedIds.has(id)));
+      await Promise.all([
+        removeCachedConversations(currentUserId, succeeded),
+        ...succeeded.map(userId => clearCachedMessages(
+          currentUserId,
+          conversationKeyFor(currentUserId, userId),
+        )),
+      ]);
+    }
+
+    if (failures.length) {
+      onErrorRef.current?.(failures[0]);
+    }
+  }, [currentUserId, selectedConversationIds, token]);
+
+  const confirmDeleteSelected = useCallback(() => {
+    const count = selectedConversationIds.length;
+    if (!count) return;
+
+    Alert.alert(
+      'Delete selected chats?',
+      `${count} chat${count === 1 ? '' : 's'} selected.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete from here',
+          onPress: () => Alert.alert(
+            'Delete from here?',
+            'This removes the selected chats only from your account.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete', style: 'destructive', onPress: () => deleteSelectedConversations(false) },
+            ],
+          ),
+        },
+        {
+          text: 'Delete all chat',
+          style: 'destructive',
+          onPress: () => Alert.alert(
+            'Delete all messages?',
+            'This permanently removes the selected chat history for both participants.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete all', style: 'destructive', onPress: () => deleteSelectedConversations(true) },
+            ],
+          ),
+        },
+      ],
+    );
+  }, [deleteSelectedConversations, selectedConversationIds.length]);
 
   const refreshConversations = useCallback(async (showLoading = true) => {
     if (showLoading) setLoadingConversations(true);
@@ -322,11 +415,13 @@ export default function ChatScreen({
     };
     socket.on('presence:update', updatePresence);
     socket.on('chat:message', refreshList);
+    socket.on('chat:conversation-deleted', refreshList);
     socket.on('connect', refreshList);
     return () => {
       clearTimeout(refreshTimer);
       socket.off('presence:update', updatePresence);
       socket.off('chat:message', refreshList);
+      socket.off('chat:conversation-deleted', refreshList);
       socket.off('connect', refreshList);
     };
   }, [currentUserId, token, refreshConversations]);
@@ -370,6 +465,11 @@ export default function ChatScreen({
 
   useEffect(() => {
     const handleHardwareBack = () => {
+      if (selectedConversationIds.length) {
+        setSelectedConversationIds([]);
+        return true;
+      }
+
       if (pickerOpen) {
         setPickerOpen(false);
         return true;
@@ -386,7 +486,7 @@ export default function ChatScreen({
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
     return () => subscription.remove();
-  }, [active, pickerOpen, refreshConversations]);
+  }, [active, pickerOpen, refreshConversations, selectedConversationIds.length]);
 
   if (active) {
     return (
@@ -411,26 +511,46 @@ export default function ChatScreen({
       '--color-canvas': theme.background, '--color-surface': theme.surface,
       '--color-ink': theme.ink, '--color-muted': theme.muted, '--color-line': theme.line,
     })}>
-      <View className="flex-row items-start justify-between px-6 pb-5 pt-6">
-        <View>
-          <Text className="text-3xl font-extrabold text-ink">Messages</Text>
-          <Text className="mt-2 text-xs text-muted">
-            {conversations.filter(item => item.unreadCount > 0).length} unread conversations
+      {selectedConversationIds.length ? (
+        <View className="flex-row items-center justify-between px-6 pb-5 pt-6">
+          <TouchableOpacity
+            onPress={() => setSelectedConversationIds([])}
+            hitSlop={10}
+            accessibilityLabel="Cancel conversation selection">
+            <Text className="text-3xl text-ink">{'‹'}</Text>
+          </TouchableOpacity>
+          <Text className="flex-1 px-4 text-xl font-extrabold text-ink">
+            {selectedConversationIds.length} selected
           </Text>
+          <TouchableOpacity
+            onPress={confirmDeleteSelected}
+            hitSlop={10}
+            accessibilityLabel="Delete selected chats">
+            <Text className="text-sm font-extrabold text-danger">Delete</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          className="h-12 w-12 items-center justify-center rounded-2xl"
-          style={{ backgroundColor: theme.outgoingBase }}
-          onPress={() => {
-            setQuery('');
-            setPickerUsers([]);
-            setPickerLoading(true);
-            setPickerOpen(true);
-          }}
-          accessibilityLabel="Start a new chat">
-          <Text className="text-3xl font-light" style={{ color: theme.outgoingInk }}>+</Text>
-        </TouchableOpacity>
-      </View>
+      ) : (
+        <View className="flex-row items-start justify-between px-6 pb-5 pt-6">
+          <View>
+            <Text className="text-3xl font-extrabold text-ink">Messages</Text>
+            <Text className="mt-2 text-xs text-muted">
+              {conversations.filter(item => item.unreadCount > 0).length} unread conversations
+            </Text>
+          </View>
+          <TouchableOpacity
+            className="h-12 w-12 items-center justify-center rounded-2xl"
+            style={{ backgroundColor: theme.outgoingBase }}
+            onPress={() => {
+              setQuery('');
+              setPickerUsers([]);
+              setPickerLoading(true);
+              setPickerOpen(true);
+            }}
+            accessibilityLabel="Start a new chat">
+            <Text className="text-3xl font-light" style={{ color: theme.outgoingInk }}>+</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <TextInput value={search} onChangeText={setSearch} placeholder="Search conversations..."
         placeholderTextColor={theme.muted} accessibilityLabel="Search conversations"
@@ -449,12 +569,29 @@ export default function ChatScreen({
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={<Text className="py-8 text-center text-muted">No matching conversations.</Text>}
           keyExtractor={item => String(item.user.id)}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const conversationUserId = String(item.user?.id || item.user?._id);
+            const selected = selectedConversationIds.includes(conversationUserId);
+            return (
             <TouchableOpacity
               className="mx-6 mb-3 flex-row items-center rounded-2xl border border-line bg-surface p-4"
-              style={item.unreadCount > 0 ? { backgroundColor: theme.separatorBg, borderColor: theme.primary } : undefined}
-              onPress={() => setActive(item.user)}
-              accessibilityLabel={`Open chat with ${item.user.name || 'user'}`}>
+              style={selected
+                ? { backgroundColor: theme.separatorBg, borderColor: theme.primary, borderWidth: 2 }
+                : item.unreadCount > 0
+                  ? { backgroundColor: theme.separatorBg, borderColor: theme.primary }
+                  : undefined}
+              onLongPress={() => toggleConversationSelection(conversationUserId)}
+              delayLongPress={300}
+              onPress={() => {
+                if (selectedConversationIds.length) {
+                  toggleConversationSelection(conversationUserId);
+                } else {
+                  setActive(item.user);
+                }
+              }}
+              accessibilityLabel={selected
+                ? `Deselect chat with ${item.user.name || 'user'}`
+                : `Open chat with ${item.user.name || 'user'}`}>
               <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.line }}>
                 <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.user.name)}</Text>
               </View>
@@ -483,8 +620,16 @@ export default function ChatScreen({
                   ) : null}
                 </View>
               </View>
-              <View className="items-center">
+              {selected ? (
+                <View className="items-center justify-center pl-2">
+                  <Text className="text-2xl text-brand">{'\u2713'}</Text>
+                </View>
+              ) : null}
+              <View
+                className="items-center"
+                style={selected ? { display: 'none' } : undefined}>
                 <TouchableOpacity
+                  style={{ display: 'none' }}
                   onPress={() => Alert.alert('Delete chat?', `Remove this chat with ${item.user.name || 'this user'} from your recent chats?`, [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -501,7 +646,8 @@ export default function ChatScreen({
                 <Text className="text-2xl text-brand">›</Text>
               </View>
             </TouchableOpacity>
-          )}
+            );
+          }}
         />
       ) : (
         <Text className="px-6 py-8 text-center text-muted">No conversations yet.</Text>
