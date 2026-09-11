@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PresenceIndicator from './PresenceIndicator';
 import { PressableScale } from '../motion';
-import { MoreIcon, PhoneIcon, VideoIcon } from './ChatIcons';
+import { PhoneIcon, VideoIcon } from './ChatIcons';
 
 function initialsOf(name) {
   return String(name || 'U')
@@ -162,12 +162,6 @@ export default function ChatHeader({
             !canInvite && styles.unavailableAction,
           ]}>
           <VideoIcon color={theme.primaryLight} size={23} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          disabled
-          accessibilityLabel="Chat actions"
-          style={[styles.headerActionButton, { backgroundColor: theme.separatorBg, borderColor: theme.line }]}>
-          <MoreIcon color={theme.primaryLight} size={22} />
         </TouchableOpacity>
       </View>
     </View>

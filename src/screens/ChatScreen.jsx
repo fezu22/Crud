@@ -318,6 +318,12 @@ export default function ChatScreen({
     setDeleteDialog({ step: 'choose', count });
   }, [deleteDialog, isDeleting, selectedConversationIds.length]);
 
+  const cancelDeleteSelection = useCallback(() => {
+    setIsDeleting(false);
+    setDeleteDialog(null);
+    setSelectedConversationIds([]);
+  }, []);
+
   const openUserPicker = useCallback(async () => {
     if (pickerOpen || pickerRequestRef.current || !currentUserId) return;
     pickerRequestRef.current = true;
@@ -468,7 +474,7 @@ export default function ChatScreen({
       }
 
       if (deleteDialog) {
-        setDeleteDialog(null);
+        cancelDeleteSelection();
         return true;
       }
 
@@ -488,7 +494,7 @@ export default function ChatScreen({
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
     return () => subscription.remove();
-  }, [active, deleteDialog, pickerOpen, refreshConversations, selectedConversationIds.length]);
+  }, [active, cancelDeleteSelection, deleteDialog, pickerOpen, refreshConversations, selectedConversationIds.length]);
 
   if (active) {
     return (
@@ -657,7 +663,7 @@ export default function ChatScreen({
         secondaryText="Delete all chat"
         onPrimary={() => setDeleteDialog({ step: 'confirm-local' })}
         onSecondary={() => setDeleteDialog({ step: 'confirm-all' })}
-        onCancel={() => setDeleteDialog(null)}
+        onCancel={cancelDeleteSelection}
       />
       <SweetAlertModal
         visible={deleteDialog?.step === 'confirm-local'}
@@ -667,7 +673,7 @@ export default function ChatScreen({
         message="This removes the selected chats only from your account."
         primaryText="Delete"
         onPrimary={() => deleteSelectedConversations(false)}
-        onCancel={() => setDeleteDialog(null)}
+        onCancel={cancelDeleteSelection}
         loading={isDeleting}
       />
       <SweetAlertModal
@@ -678,7 +684,7 @@ export default function ChatScreen({
         message="This permanently deletes the selected chat history for both participants. This cannot be undone."
         primaryText="Delete all"
         onPrimary={() => deleteSelectedConversations(true)}
-        onCancel={() => setDeleteDialog(null)}
+        onCancel={cancelDeleteSelection}
         loading={isDeleting}
       />
       <SweetAlertModal
