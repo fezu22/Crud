@@ -348,7 +348,7 @@ export default function PremiumChatScreen({
     });
   }, [currentUserId]);
 
-  const finalizeActiveCall = useCallback(async status => {
+  const finalizeActiveCall = useCallback(status => {
     const call = activeCallRef.current;
     if (!call || call.finalized) return false;
     if (status === 'ended' && !call.answeredAt) return false;
@@ -369,21 +369,19 @@ export default function PremiumChatScreen({
       durationSeconds,
     };
 
-    // Set the guard and begin persistence before clearing this active session,
-    // so repeated SDK terminal callbacks cannot create a second record.
-    const savePromise = saveCallEvent(callEvent, token);
+    // Clear the active session before any async persistence so repeated SDK
+    // terminal callbacks cannot navigate or save the same call twice.
     activeCallRef.current = null;
     setOutgoingCall(null);
     returnToMediApp();
 
-    try {
-      const savedMessage = await savePromise;
-      upsertCallMessage(savedMessage);
-      return true;
-    } catch (error) {
-      onErrorRef.current?.(error);
-      return false;
-    }
+    saveCallEvent(callEvent, token)
+      .then(upsertCallMessage)
+      .catch(error => {
+        onErrorRef.current?.(error);
+      });
+
+    return true;
   }, [token, upsertCallMessage]);
 
   const startCall = useCallback(async type => {
@@ -415,7 +413,7 @@ export default function PremiumChatScreen({
         { callName: contact?.name || 'Medi user' },
       );
     } catch (error) {
-      await finalizeActiveCall('failed');
+      finalizeActiveCall('failed');
       setOutgoingCall(null);
       setCallError(error?.message || 'Could not start the call.');
     }

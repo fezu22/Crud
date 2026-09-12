@@ -22,6 +22,11 @@ function createNavigationContainerRef() {
   return {
     canGoBack: jest.fn(() => false),
     dispatch: jest.fn(),
+    getCurrentRoute: jest.fn(() => ({ name: 'MediApp' })),
+    getRootState: jest.fn(() => ({
+      index: 0,
+      routes: [{ name: 'MediApp' }],
+    })),
     isReady: jest.fn(() => false),
   };
 }
