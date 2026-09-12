@@ -713,6 +713,7 @@ function AppContent() {
               zegoStatus={zegoStatus}
               onRetryZego={() => setZegoRetry(value => value + 1)}
               onError={error => showError('Chat error', error)}
+              onExitChat={() => setActiveTab('home')}
             />
           ) : activeTab === 'projects' ? (
             <ProjectsScreen

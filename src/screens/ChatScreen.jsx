@@ -241,6 +241,7 @@ export default function ChatScreen({
   themeMode = 'dark',
   zegoStatus = 'idle',
   onRetryZego,
+  onExitChat,
 }) {
   const theme = getChatTheme(themeMode);
   const [search, setSearch] = useState('');
@@ -489,12 +490,13 @@ export default function ChatScreen({
         return true;
       }
 
-      return false;
+      onExitChat?.();
+      return true;
     };
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
     return () => subscription.remove();
-  }, [active, cancelDeleteSelection, deleteDialog, pickerOpen, refreshConversations, selectedConversationIds.length]);
+  }, [active, cancelDeleteSelection, deleteDialog, onExitChat, pickerOpen, refreshConversations, selectedConversationIds.length]);
 
   if (active) {
     return (

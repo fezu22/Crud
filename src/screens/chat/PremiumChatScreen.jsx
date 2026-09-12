@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  BackHandler,
   FlatList,
   KeyboardAvoidingView,
   LayoutAnimation,
@@ -74,6 +75,7 @@ import { FadeSlideIn } from '../../components/motion';
 import { getChatTheme } from '../../theme/chatTheme';
 import { getZegoUserId, getZegoUserName } from '../../services/zegoService';
 import { subscribeToZegoCallEvents } from '../../services/zegoCallInvitation';
+import { returnToMediApp } from '../../components/chat/ZegoCallInvitationHost';
 import {
   loadCachedMessages,
   saveCachedMessages,
@@ -117,6 +119,28 @@ function dayLabel(dateString) {
     month: 'long',
     day: 'numeric',
   });
+}
+
+function formatClock(dateString) {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatCallDuration(seconds) {
+  const duration = Math.max(0, Number(seconds) || 0);
+  if (duration >= 60) return `${Math.floor(duration / 60)}m ${duration % 60}s`;
+  return duration > 0 ? `${duration}s` : '';
+}
+
+function callEventTitle(call, currentUserId) {
+  const type = call.callType === 'video' ? 'video' : 'voice';
+  if (call.callStatus === 'missed') return `Missed ${type} call`;
+  if (call.callStatus === 'declined') return `Declined ${type} call`;
+  if (call.callStatus === 'cancelled') return `Cancelled ${type} call`;
+  if (call.callStatus === 'failed') return `Failed ${type} call`;
+  const outgoing = String(call.callerId) === String(currentUserId);
+  return `${outgoing ? 'Outgoing' : 'Incoming'} ${type} call`;
 }
 
 function buildRows(messages) {
@@ -311,6 +335,57 @@ export default function PremiumChatScreen({
     .sort()
     .join('_');
 
+  const upsertCallMessage = useCallback(serverMessage => {
+    const nextMessage = normalizeServerMessage(serverMessage, currentUserId);
+    setMessages(current => {
+      const existing = current.filter(message => (
+        String(message._id) !== String(nextMessage._id) &&
+        (!nextMessage.callSessionId || message.callSessionId !== nextMessage.callSessionId)
+      ));
+      return [...existing, nextMessage].sort(
+        (first, second) => new Date(first.createdAt) - new Date(second.createdAt),
+      );
+    });
+  }, [currentUserId]);
+
+  const finalizeActiveCall = useCallback(async status => {
+    const call = activeCallRef.current;
+    if (!call || call.finalized) return false;
+    if (status === 'ended' && !call.answeredAt) return false;
+
+    call.finalized = true;
+    const endedAt = new Date();
+    const durationSeconds = call.answeredAt
+      ? Math.max(0, Math.floor((endedAt - call.answeredAt) / 1000))
+      : 0;
+    const callEvent = {
+      recipientId: call.recipientId,
+      callSessionId: call.callSessionId,
+      callType: call.callType,
+      callStatus: status,
+      startedAt: call.startedAt.toISOString(),
+      answeredAt: call.answeredAt?.toISOString(),
+      endedAt: endedAt.toISOString(),
+      durationSeconds,
+    };
+
+    // Set the guard and begin persistence before clearing this active session,
+    // so repeated SDK terminal callbacks cannot create a second record.
+    const savePromise = saveCallEvent(callEvent, token);
+    activeCallRef.current = null;
+    setOutgoingCall(null);
+    returnToMediApp();
+
+    try {
+      const savedMessage = await savePromise;
+      upsertCallMessage(savedMessage);
+      return true;
+    } catch (error) {
+      onErrorRef.current?.(error);
+      return false;
+    }
+  }, [token, upsertCallMessage]);
+
   const startCall = useCallback(async type => {
     if (zegoStatus !== 'ready' || outgoingCall || !contactId) {
       setCallError(zegoStatus === 'ready' ? 'A call is already starting.' : 'Call service is still connecting. Please try again shortly.');
@@ -340,15 +415,11 @@ export default function PremiumChatScreen({
         { callName: contact?.name || 'Medi user' },
       );
     } catch (error) {
-      const call = activeCallRef.current;
-      if (call && !call.finalized) {
-        call.finalized = true;
-        saveCallEvent({ ...call, startedAt: call.startedAt.toISOString(), endedAt: new Date().toISOString(), callStatus: 'failed', durationSeconds: 0 }, token).catch(() => {});
-      }
+      await finalizeActiveCall('failed');
       setOutgoingCall(null);
       setCallError(error?.message || 'Could not start the call.');
     }
-  }, [contact, contactId, navigation, outgoingCall, token, zegoStatus]);
+  }, [contact, contactId, finalizeActiveCall, navigation, outgoingCall, zegoStatus]);
 
   useEffect(() => navigation.addListener('focus', () => {
     setOutgoingCall(null);
@@ -358,13 +429,7 @@ export default function PremiumChatScreen({
     const call = activeCallRef.current;
     if (event === 'accepted' && call && !call.answeredAt) call.answeredAt = new Date();
     const statusByEvent = { declined: 'declined', busy: 'declined', timeout: 'missed', canceled: 'cancelled', ended: 'ended' };
-    if (call && statusByEvent[event] && !call.finalized && (event !== 'ended' || call.answeredAt)) {
-      call.finalized = true;
-      const endedAt = new Date();
-      const durationSeconds = call.answeredAt ? Math.max(0, Math.floor((endedAt - call.answeredAt) / 1000)) : 0;
-      saveCallEvent({ recipientId: call.recipientId, callSessionId: call.callSessionId, callType: call.callType, callStatus: statusByEvent[event], startedAt: call.startedAt.toISOString(), answeredAt: call.answeredAt?.toISOString(), endedAt: endedAt.toISOString(), durationSeconds }, token).catch(() => {});
-      activeCallRef.current = null;
-    }
+    if (statusByEvent[event]) finalizeActiveCall(statusByEvent[event]);
     setOutgoingCall(null);
     const callMessages = {
       declined: 'Call declined.',
@@ -372,7 +437,7 @@ export default function PremiumChatScreen({
       timeout: 'No answer.',
     };
     if (callMessages[event]) setCallError(callMessages[event]);
-  }), [token]);
+  }), [finalizeActiveCall]);
 
   const syncWithServer = Boolean(
     token &&
@@ -456,6 +521,49 @@ export default function PremiumChatScreen({
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
+
+  useEffect(() => {
+    const handleHardwareBack = () => {
+      if (deletePromptVisible) {
+        setDeletePromptVisible(false);
+        return true;
+      }
+      if (callError) {
+        setCallError(null);
+        return true;
+      }
+      if (viewingImage) {
+        setViewingImage(null);
+        return true;
+      }
+      if (viewingDocument) {
+        setViewingDocument(null);
+        return true;
+      }
+      if (recordingOpen) {
+        setRecordingOpen(false);
+        return true;
+      }
+      if (attachmentOpen) {
+        setAttachmentOpen(false);
+        return true;
+      }
+      if (selectedMessageIds.length) {
+        setSelectedMessageIds([]);
+        return true;
+      }
+      if (editingMessage) {
+        setEditingMessage(null);
+        setText('');
+        return true;
+      }
+      onBack?.();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
+    return () => subscription.remove();
+  }, [attachmentOpen, callError, deletePromptVisible, editingMessage, onBack, recordingOpen, selectedMessageIds.length, viewingDocument, viewingImage]);
 
   const loadServerMessages = useCallback(
     async () => {
@@ -1264,17 +1372,17 @@ export default function PremiumChatScreen({
 
     if (item.message.type === 'call') {
       const call = item.message;
-      const outgoing = String(call.callerId) === String(currentUserId);
-      const duration = Number(call.durationSeconds || 0);
-      const durationText = duration >= 60
-        ? `${Math.floor(duration / 60)}m ${duration % 60}s`
-        : duration > 0 ? `${duration}s` : String(call.callStatus || 'ended');
+      const durationText = formatCallDuration(call.durationSeconds);
+      const meta = [
+        call.callStatus === 'ended' ? durationText || 'Ended' : null,
+        formatClock(call.createdAt),
+      ].filter(Boolean).join(' • ');
       return (
         <View style={[styles.callEvent, { backgroundColor: theme.surfaceAlt, borderColor: theme.line }]}>
           {call.callType === 'video' ? <VideoIcon color={theme.primary} size={18} /> : <PhoneIcon color={theme.primary} size={18} />}
           <View style={styles.callEventText}>
-            <Text style={[styles.callEventTitle, { color: theme.ink }]}>{`${outgoing ? 'Outgoing' : 'Incoming'} ${call.callType || 'voice'} call`}</Text>
-            <Text style={[styles.callEventMeta, { color: theme.muted }]}>{`${durationText} • ${formatClock(call.createdAt)}`}</Text>
+            <Text style={[styles.callEventTitle, { color: theme.ink }]}>{callEventTitle(call, currentUserId)}</Text>
+            <Text style={[styles.callEventMeta, { color: theme.muted }]}>{meta}</Text>
           </View>
         </View>
       );
