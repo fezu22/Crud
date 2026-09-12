@@ -659,7 +659,15 @@ function AppContent() {
           <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
             <SafeAreaView className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
               <StatusBar barStyle={preferences.theme === 'dark' ? 'light-content' : 'dark-content'} />
-              <AdminDashboardScreen token={token} user={user} themeMode={preferences.theme} onLogout={logout} onError={error => showError('Chat error', error)} />
+              <AdminDashboardScreen
+                token={token}
+                user={user}
+                themeMode={preferences.theme}
+                zegoStatus={zegoStatus}
+                onRetryZego={() => setZegoRetry(value => value + 1)}
+                onLogout={logout}
+                onError={error => showError('Chat error', error)}
+              />
               <ConfirmDialog config={confirm} onCancel={closeConfirm} />
             </SafeAreaView>
           </View>

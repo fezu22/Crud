@@ -455,7 +455,10 @@ export default function ChatScreen({
 
     getAdminChat(token)
       .then(value => {
-        if (mounted) setAdminContact(value || null);
+        if (mounted) {
+          const adminId = value?.id || value?._id;
+          setAdminContact(String(adminId || '') === String(currentUserId) ? null : value || null);
+        }
       })
       .catch(error => {
         // A missing admin is a server setup issue, not a reason to break chat.
@@ -465,7 +468,7 @@ export default function ChatScreen({
     return () => {
       mounted = false;
     };
-  }, [token]);
+  }, [currentUserId, token]);
 
   useEffect(() => {
     const handleHardwareBack = () => {
