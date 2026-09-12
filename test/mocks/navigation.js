@@ -1,3 +1,4 @@
+/* global jest */
 const React = require('react');
 
 function NavigationContainer({ children }) {
@@ -17,4 +18,21 @@ function createNativeStackNavigator() {
   };
 }
 
-module.exports = { NavigationContainer, createNativeStackNavigator };
+function createNavigationContainerRef() {
+  return {
+    canGoBack: jest.fn(() => false),
+    dispatch: jest.fn(),
+    isReady: jest.fn(() => false),
+  };
+}
+
+const StackActions = {
+  popToTop: jest.fn(() => ({ type: 'POP_TO_TOP' })),
+};
+
+module.exports = {
+  NavigationContainer,
+  StackActions,
+  createNativeStackNavigator,
+  createNavigationContainerRef,
+};

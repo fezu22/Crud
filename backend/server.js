@@ -22,6 +22,12 @@ const {
   ensureConfiguredAdminAtStartup,
 } = require('./utils/admin');
 
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+
 const app = express();
 const httpServer = http.createServer(app);
 
@@ -84,15 +90,11 @@ io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
 
-    const secret =
-      process.env.JWT_SECRET ||
-      'default_jwt_secret_key_change_in_production';
-
     if (!token) {
       return next(new Error('Authentication required'));
     }
 
-    const decoded = jwt.verify(token, secret);
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     const user = await User.findById(decoded.id).select('-password');
 

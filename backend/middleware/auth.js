@@ -4,6 +4,12 @@ const {
   ensureConfiguredAdminRole,
 } = require('../utils/admin');
 
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+
 const auth = async (req, res, next) => {
   try {
     const authHeader =
@@ -30,13 +36,9 @@ const auth = async (req, res, next) => {
       });
     }
 
-    const secret =
-      process.env.JWT_SECRET ||
-      'default_jwt_secret_key_change_in_production';
-
     const decoded = jwt.verify(
       token,
-      secret,
+      JWT_SECRET,
     );
 
     const user = await User.findById(

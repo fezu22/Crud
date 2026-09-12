@@ -8,6 +8,12 @@ const User = require('../models/User');
 const Task = require('../models/Task');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/crudapp';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+
 const logLines = [];
 function log(msg) {
   console.log(msg);
@@ -49,9 +55,8 @@ async function testAuth() {
 
     // 4. Test JWT Signing and Verification
     log('--- 3. Testing JWT Token Generation & Verification ---');
-    const secret = process.env.JWT_SECRET || 'default_jwt_secret';
-    const token = jwt.sign({ id: user._id }, secret, { expiresIn: '7d' });
-    const decoded = jwt.verify(token, secret);
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
+    const decoded = jwt.verify(token, JWT_SECRET);
     if (decoded.id.toString() === user._id.toString()) {
       log(`✅ JWT generated and verified correctly: ${token.substring(0, 25)}...`);
     } else {

@@ -8,11 +8,7 @@ const router = express.Router();
 router.get('/ping', auth, (req, res) => res.json({ ok: true }));
 
 const generateToken = userId => {
-  const secret =
-    process.env.JWT_SECRET ||
-    'default_jwt_secret_key_change_in_production';
-
-  return jwt.sign({ id: userId }, secret, {
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: '30d',
   });
 };

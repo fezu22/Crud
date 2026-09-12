@@ -740,13 +740,39 @@ router.delete(
       }
 
       const conversationId = conversationIdFor(req.user._id, other._id);
+
+      if (req.body?.mode === 'me' || req.query?.mode === 'me') {
+        const message = await ChatMessage.findOne({
+          _id: req.params.messageId,
+          conversationId,
+          $or: [
+            { sender: req.user._id },
+            { recipient: req.user._id },
+            { receiver: req.user._id },
+          ],
+        }).select('_id');
+
+        if (!message) {
+          return res.status(404).json({ message: 'Message not found or cannot be deleted' });
+        }
+
+        await ChatMessage.updateOne(
+          { _id: message._id },
+          { $addToSet: { deletedFor: req.user._id } },
+        );
+
+        req.app.get('io')?.to(`user:${String(req.user._id)}`).emit('chat:messages-hidden', {
+          conversationId,
+          messageIds: [String(message._id)],
+        });
+
+        return res.json({ message: 'Message deleted for you', messageId: String(message._id) });
+      }
+
       const message = await ChatMessage.findOne({
         _id: req.params.messageId,
         conversationId,
-        $or: [
-          { sender: req.user._id },
-          { sender: other._id },
-        ],
+        sender: req.user._id,
       });
 
       if (!message) {
@@ -794,10 +820,7 @@ router.patch(
       const message = await ChatMessage.findOne({
         _id: req.params.messageId,
         conversationId,
-        $or: [
-          { sender: req.user._id },
-          { sender: other._id },
-        ],
+        sender: req.user._id,
       });
 
       if (!message) {
