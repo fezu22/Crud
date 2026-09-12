@@ -69,7 +69,6 @@ export default function ChatHeader({
   themeMode = 'dark',
   onBack,
   zegoStatus = 'idle',
-  onRetryZego,
   onStartCall,
 }) {
   const online = Boolean(contact?.online);
@@ -150,7 +149,7 @@ export default function ChatHeader({
     zegoStatus === 'error'
       ? 'Calls unavailable — tap a call button to retry'
       : zegoStatus === 'initializing'
-        ? 'Connecting calls...'
+        ? 'Connecting call service...'
         : presenceText;
 
   const startCall = type => {
@@ -163,7 +162,7 @@ export default function ChatHeader({
     });
 
     if (canRetryCalls) {
-      onRetryZego?.();
+      onStartCall?.(type);
       return;
     }
 

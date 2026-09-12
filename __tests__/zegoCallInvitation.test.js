@@ -46,7 +46,12 @@ afterEach(() => {
 test('registers the ZIM module namespace required by ZegoUIKit', async () => {
   global.fetch = jest.fn(async () => ({
     ok: true,
-    json: async () => ({ token: 'zego-token', userId: '507f1f77bcf86cd799439011' }),
+    status: 200,
+    json: async () => ({
+      appId: 1460432965,
+      token: 'zego-token',
+      userId: '507f1f77bcf86cd799439011',
+    }),
   }));
   await initializeZegoCallInvitations('session-token', { _id: '507f1f77bcf86cd799439011', name: 'Faraz' });
 

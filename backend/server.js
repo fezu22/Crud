@@ -17,6 +17,7 @@ const mediaRoutes = require('./routes/mediaRoutes');
 const projectRoutes = require('./routes/projectRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const zegoRoutes = require('./routes/zegoRoutes');
+const { logZegoConfigAtStartup } = zegoRoutes;
 
 const {
   ensureConfiguredAdminAtStartup,
@@ -27,6 +28,8 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
 }
+
+logZegoConfigAtStartup();
 
 const app = express();
 const httpServer = http.createServer(app);

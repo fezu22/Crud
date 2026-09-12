@@ -314,6 +314,7 @@ export default function PremiumChatScreen({
   const onErrorRef = useRef(onError);
   const hydratedConversationRef = useRef(null);
   const activeCallRef = useRef(null);
+  const pendingCallTypeRef = useRef(null);
 
   const jumpOpacity = useRef(
     new Animated.Value(0),
@@ -393,6 +394,13 @@ export default function PremiumChatScreen({
       recipientId: contactId ? String(contactId).slice(0, 80) : '',
     });
 
+    if (zegoStatus === 'error' && contactId && !outgoingCall) {
+      pendingCallTypeRef.current = type;
+      setCallError(null);
+      onRetryZego?.();
+      return;
+    }
+
     if (zegoStatus !== 'ready' || outgoingCall || !contactId) {
       setCallError(zegoStatus === 'ready' ? 'A call is already starting.' : 'Call service is still connecting. Please try again shortly.');
       return;
@@ -425,7 +433,17 @@ export default function PremiumChatScreen({
       setOutgoingCall(null);
       setCallError(error?.message || 'Could not start the call.');
     }
-  }, [contact, contactId, currentUserId, finalizeActiveCall, navigation, outgoingCall, zegoStatus]);
+  }, [contact, contactId, currentUserId, finalizeActiveCall, navigation, onRetryZego, outgoingCall, zegoStatus]);
+
+  useEffect(() => {
+    if (zegoStatus !== 'ready' || !pendingCallTypeRef.current) {
+      return;
+    }
+
+    const pendingCallType = pendingCallTypeRef.current;
+    pendingCallTypeRef.current = null;
+    startCall(pendingCallType);
+  }, [startCall, zegoStatus]);
 
   useEffect(() => navigation.addListener('focus', () => {
     setOutgoingCall(null);
