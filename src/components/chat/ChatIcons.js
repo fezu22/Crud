@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Image, Platform, View } from 'react-native';
 
 /**
  * Small hand-drawn icons shared by the premium chat screens. They are built
@@ -100,88 +100,33 @@ export function SendIcon({ color, size = 20 }) {
   );
 }
 
+function AndroidDrawableIcon({ color, height, name, size = 20, width = size }) {
+  if (Platform.OS !== 'android') {
+    return null;
+  }
+
+  return (
+    <Image
+      resizeMode="contain"
+      source={{ uri: name }}
+      style={{
+        width,
+        height: height || size,
+        tintColor: color,
+      }}
+    />
+  );
+}
+
 export function VideoIcon({ color, size = 20 }) {
   return (
-    <View
-      style={{
-        width: size * 1.24,
-        height: size,
-        flexDirection: 'row',
-        alignItems: 'center',
-      }}>
-      <View
-        style={{
-          width: size * 0.76,
-          height: size * 0.56,
-          borderRadius: size * 0.12,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          width: 0,
-          height: 0,
-          borderTopWidth: size * 0.24,
-          borderBottomWidth: size * 0.24,
-          borderRightWidth: size * 0.42,
-          borderTopColor: 'transparent',
-          borderBottomColor: 'transparent',
-          borderRightColor: color,
-          marginLeft: size * 0.04,
-        }}
-      />
-    </View>
+    <AndroidDrawableIcon color={color} height={size} name="medi_ic_videocam" size={size} width={size * 1.12} />
   );
 }
 
 export function PhoneIcon({ color, size = 20 }) {
   return (
-    <View
-      style={{
-        width: size * 1.04,
-        height: size,
-        transform: [{ rotate: '-35deg' }],
-      }}>
-      <View
-        style={{
-          position: 'absolute',
-          left: size * 0.22,
-          top: size * 0.37,
-          width: size * 0.6,
-          height: size * 0.26,
-          borderRadius: size * 0.13,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: size * 0.05,
-          top: size * 0.2,
-          width: size * 0.38,
-          height: size * 0.42,
-          borderTopLeftRadius: size * 0.2,
-          borderTopRightRadius: size * 0.12,
-          borderBottomLeftRadius: size * 0.2,
-          borderBottomRightRadius: size * 0.12,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          right: size * 0.05,
-          bottom: size * 0.2,
-          width: size * 0.38,
-          height: size * 0.42,
-          borderTopLeftRadius: size * 0.12,
-          borderTopRightRadius: size * 0.2,
-          borderBottomLeftRadius: size * 0.12,
-          borderBottomRightRadius: size * 0.2,
-          backgroundColor: color,
-        }}
-      />
-    </View>
+    <AndroidDrawableIcon color={color} name="medi_ic_call" size={size} />
   );
 }
 
@@ -224,66 +169,7 @@ export function ThemeIcon({ dark, size = 20, darkColor = '#FCD34D', lightColor =
 
 export function MicIcon({ color, size = 20 }) {
   return (
-    <View style={{ width: size, height: size, alignItems: 'center' }}>
-      <View
-        style={{
-          width: size * 0.42,
-          height: size * 0.58,
-          borderRadius: size * 0.21,
-          backgroundColor: color,
-          marginTop: size * 0.04,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: size * 0.18,
-          top: size * 0.26,
-          width: size * 0.12,
-          height: size * 0.34,
-          borderRadius: size * 0.06,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          right: size * 0.18,
-          top: size * 0.26,
-          width: size * 0.12,
-          height: size * 0.34,
-          borderRadius: size * 0.06,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          top: size * 0.55,
-          width: size * 0.44,
-          height: size * 0.12,
-          borderRadius: size * 0.06,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          width: size * 0.12,
-          height: size * 0.22,
-          borderRadius: size * 0.06,
-          marginTop: size * 0.04,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          width: size * 0.46,
-          height: size * 0.12,
-          borderRadius: size * 0.06,
-          backgroundColor: color,
-        }}
-      />
-    </View>
+    <AndroidDrawableIcon color={color} name="medi_ic_mic" size={size} />
   );
 }
 
@@ -316,125 +202,13 @@ export function PaperclipIcon({ color, size = 20 }) {
 
 export function ImageIcon({ color, size = 20 }) {
   return (
-    <View
-      style={{
-        width: size,
-        height: size * 0.84,
-        position: 'relative',
-      }}>
-      <View
-        style={{
-          position: 'absolute',
-          left: size * 0.08,
-          top: 0,
-          width: size * 0.82,
-          height: size * 0.66,
-          borderRadius: size * 0.1,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: 0,
-          bottom: 0,
-          width: size * 0.82,
-          height: size * 0.66,
-          borderRadius: size * 0.1,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: size * 0.14,
-          top: size * 0.32,
-          width: size * 0.36,
-          height: size * 0.36,
-          backgroundColor: 'rgba(255,255,255,0.35)',
-          transform: [{ rotate: '45deg' }],
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          right: size * 0.18,
-          top: size * 0.34,
-          width: size * 0.32,
-          height: size * 0.32,
-          backgroundColor: 'rgba(255,255,255,0.35)',
-          transform: [{ rotate: '45deg' }],
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          right: size * 0.26,
-          top: size * 0.14,
-          width: size * 0.14,
-          height: size * 0.14,
-          borderRadius: size * 0.07,
-          backgroundColor: 'rgba(255,255,255,0.35)',
-        }}
-      />
-    </View>
+    <AndroidDrawableIcon color={color} name="medi_ic_photo_library" size={size} />
   );
 }
 
 export function CameraIcon({ color, size = 20 }) {
   return (
-    <View
-      style={{
-        width: size,
-        height: size * 0.82,
-        position: 'relative',
-      }}>
-      <View
-        style={{
-          position: 'absolute',
-          left: size * 0.18,
-          top: 0,
-          width: size * 0.3,
-          height: size * 0.18,
-          borderTopLeftRadius: size * 0.06,
-          borderTopRightRadius: size * 0.06,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: 0,
-          bottom: 0,
-          width: size,
-          height: size * 0.7,
-          borderRadius: size * 0.12,
-          backgroundColor: color,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <View
-          style={{
-            width: size * 0.36,
-            height: size * 0.36,
-            borderRadius: size * 0.18,
-            backgroundColor: 'rgba(255,255,255,0.35)',
-          }}
-        />
-      </View>
-      <View
-        style={{
-          position: 'absolute',
-          right: size * 0.16,
-          top: size * 0.2,
-          width: size * 0.12,
-          height: size * 0.12,
-          borderRadius: size * 0.06,
-          backgroundColor: 'rgba(255,255,255,0.35)',
-        }}
-      />
-    </View>
+    <AndroidDrawableIcon color={color} name="medi_ic_photo_camera" size={size} />
   );
 }
 
@@ -467,61 +241,6 @@ export function BackIcon({ color, size = 22 }) {
 
 export function DocumentIcon({ color, size = 22 }) {
   return (
-    <View
-      style={{
-        width: size * 0.84,
-        height: size,
-        position: 'relative',
-      }}
-    >
-      <View
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: size * 0.62,
-          height: size,
-          borderTopLeftRadius: size * 0.08,
-          borderBottomLeftRadius: size * 0.08,
-          borderBottomRightRadius: size * 0.08,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          right: size * 0.02,
-          top: size * 0.22,
-          width: size * 0.28,
-          height: size * 0.78,
-          borderBottomRightRadius: size * 0.08,
-          backgroundColor: color,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          right: size * 0.02,
-          top: 0,
-          width: 0,
-          height: 0,
-          borderTopWidth: size * 0.3,
-          borderLeftWidth: size * 0.3,
-          borderTopColor: color,
-          borderLeftColor: 'transparent',
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          right: size * 0.02,
-          top: size * 0.22,
-          width: size * 0.3,
-          height: size * 0.08,
-          borderRadius: size * 0.04,
-          backgroundColor: color,
-        }}
-      />
-    </View>
+    <AndroidDrawableIcon color={color} name="medi_ic_insert_drive_file" size={size} />
   );
 }
