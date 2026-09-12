@@ -34,6 +34,13 @@ function logInitializationFailure(stage, error) {
   });
 }
 
+function logInitializationStage(stage, details = {}) {
+  console.info('[ZEGOCLOUD][release-check]', {
+    stage,
+    ...details,
+  });
+}
+
 function notifyCallEvent(type, details) {
   callEventListeners.forEach(listener => listener(type, details));
 }
@@ -48,8 +55,14 @@ export async function initializeZegoCallInvitations(authToken, user) {
   if (!authToken || !userId) {
     throw new Error('A signed-in user is required before calling can initialize.');
   }
-  if (initializedUserId === userId) return;
-  if (initializationPromise && initializingUserId === userId) return initializationPromise;
+  if (initializedUserId === userId) {
+    logInitializationStage('init already ready', { userId });
+    return;
+  }
+  if (initializationPromise && initializingUserId === userId) {
+    logInitializationStage('init already in progress', { userId });
+    return initializationPromise;
+  }
   if (initializationPromise) uninitializeZegoCallInvitations();
   if (initializedUserId) uninitializeZegoCallInvitations();
 
@@ -57,13 +70,24 @@ export async function initializeZegoCallInvitations(authToken, user) {
   initializingUserId = userId;
   initializationPromise = (async () => {
     let initialToken;
+    logInitializationStage('init started', {
+      appId: ZEGO_APP_ID,
+      userId,
+      hasAuthToken: Boolean(authToken),
+    });
     try {
-      initialToken = await requestZegoToken(authToken);
+      initialToken = await requestZegoToken(authToken, userId);
     } catch (error) {
       logInitializationFailure('requesting token', error);
       throw createInitializationError('requesting token', error);
     }
     if (generation !== lifecycleGeneration) return;
+    if (initialToken?.appId && Number(initialToken.appId) !== ZEGO_APP_ID) {
+      const error = new Error('The call service returned credentials for a different ZEGOCLOUD app.');
+      logInitializationFailure('validating app id', error);
+      throw createInitializationError('validating app id', error);
+    }
+
     if (!initialToken?.token || (initialToken.userId && initialToken.userId !== userId)) {
       const error = new Error('The call service returned credentials for a different user.');
       logInitializationFailure('validating token', error);
@@ -72,7 +96,10 @@ export async function initializeZegoCallInvitations(authToken, user) {
 
     const provideFreshToken = async () => {
       try {
-        const refreshedToken = await requestZegoToken(authToken);
+        const refreshedToken = await requestZegoToken(authToken, userId);
+        if (refreshedToken?.appId && Number(refreshedToken.appId) !== ZEGO_APP_ID) {
+          throw new Error('The refreshed call credentials do not match the configured ZEGOCLOUD app.');
+        }
         if (!refreshedToken?.token || (refreshedToken.userId && refreshedToken.userId !== userId)) {
           throw new Error('The refreshed call credentials do not match the signed-in user.');
         }
@@ -99,9 +126,12 @@ export async function initializeZegoCallInvitations(authToken, user) {
       }
       signalingPlugin.init(ZEGO_APP_ID, '');
       signalingInitialized = true;
+      logInitializationStage('ZIM login start', { userId });
       await signalingPlugin.login(userId, getZegoUserName(user), initialToken.token);
       if (generation !== lifecycleGeneration) return;
+      logInitializationStage('ZIM login success', { userId });
 
+      logInitializationStage('prebuilt init start', { userId });
       await ZegoUIKitPrebuiltCallService.init(
         ZEGO_APP_ID,
         '',
@@ -117,8 +147,13 @@ export async function initializeZegoCallInvitations(authToken, user) {
           onOutgoingCallCancelButtonPressed: (...details) => notifyCallEvent('canceled', details),
         },
       );
+      logInitializationStage('prebuilt init success', { userId });
     } catch (error) {
       logInitializationFailure('Zego init', error);
+      logInitializationStage('ZIM/prebuilt login failure', {
+        userId,
+        ...getSanitizedZegoError(error),
+      });
       throw createInitializationError('Zego init', error);
     }
     prebuiltServiceInitialized = true;
@@ -129,6 +164,10 @@ export async function initializeZegoCallInvitations(authToken, user) {
       return;
     }
     initializedUserId = userId;
+    logInitializationStage('init final status', {
+      userId,
+      status: 'ready',
+    });
   })();
 
   try {

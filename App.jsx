@@ -76,6 +76,7 @@ import {
   uninitializeZegoCallInvitations,
 } from './src/services/zegoCallInvitation';
 import { setZegoCallThemeMode } from './src/components/chat/ZegoCallUi';
+import { API_BASE_URL } from './src/config/apiConfig';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -312,6 +313,12 @@ function AppContent() {
   }, [token]);
   useEffect(() => {
     if (!token || !zegoUserId) {
+      console.info('[ZEGOCLOUD][release-check]', {
+        stage: 'init waiting for auth user',
+        apiBaseUrl: API_BASE_URL,
+        hasAuthToken: Boolean(token),
+        userId: zegoUserId ? String(zegoUserId).slice(0, 80) : '',
+      });
       setZegoStatus('idle');
       uninitializeZegoCallInvitations();
       return undefined;
@@ -319,17 +326,40 @@ function AppContent() {
 
     let active = true;
     setZegoStatus('initializing');
+    console.info('[ZEGOCLOUD][release-check]', {
+      stage: 'app init effect start',
+      apiBaseUrl: API_BASE_URL,
+      userId: String(zegoUserId).slice(0, 80),
+    });
     initializeZegoCallInvitations(token, zegoUserRef.current)
       .then(() => {
-        if (active) setZegoStatus('ready');
+        if (active) {
+          setZegoStatus('ready');
+          console.info('[ZEGOCLOUD][release-check]', {
+            stage: 'app init final status',
+            status: 'ready',
+            apiBaseUrl: API_BASE_URL,
+            userId: String(zegoUserId).slice(0, 80),
+          });
+        }
       })
       .catch(error => {
         console.warn('[ZEGOCLOUD] calling is unavailable', {
           stage: error?.stage || 'unknown',
           code: error?.code ?? 'unknown',
           message: String(error?.message || 'Initialization failed.').slice(0, 240),
+          apiBaseUrl: API_BASE_URL,
+          userId: String(zegoUserId).slice(0, 80),
         });
-        if (active) setZegoStatus('error');
+        if (active) {
+          setZegoStatus('error');
+          console.info('[ZEGOCLOUD][release-check]', {
+            stage: 'app init final status',
+            status: 'error',
+            apiBaseUrl: API_BASE_URL,
+            userId: String(zegoUserId).slice(0, 80),
+          });
+        }
       });
 
     return () => {

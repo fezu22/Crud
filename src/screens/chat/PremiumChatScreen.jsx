@@ -385,6 +385,14 @@ export default function PremiumChatScreen({
   }, [token, upsertCallMessage]);
 
   const startCall = useCallback(async type => {
+    console.info('[ZEGOCLOUD][release-check]', {
+      stage: 'start call requested',
+      callType: type,
+      zegoStatus,
+      currentUserId: currentUserId ? String(currentUserId).slice(0, 80) : '',
+      recipientId: contactId ? String(contactId).slice(0, 80) : '',
+    });
+
     if (zegoStatus !== 'ready' || outgoingCall || !contactId) {
       setCallError(zegoStatus === 'ready' ? 'A call is already starting.' : 'Call service is still connecting. Please try again shortly.');
       return;
@@ -417,7 +425,7 @@ export default function PremiumChatScreen({
       setOutgoingCall(null);
       setCallError(error?.message || 'Could not start the call.');
     }
-  }, [contact, contactId, finalizeActiveCall, navigation, outgoingCall, zegoStatus]);
+  }, [contact, contactId, currentUserId, finalizeActiveCall, navigation, outgoingCall, zegoStatus]);
 
   useEffect(() => navigation.addListener('focus', () => {
     setOutgoingCall(null);

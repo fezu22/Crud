@@ -1,6 +1,7 @@
 import { NativeModules, Platform } from 'react-native';
 
 const PRODUCTION_API_URL = 'https://crud-ptx8.onrender.com/api';
+const PRODUCTION_API_HOST = 'crud-ptx8.onrender.com';
 
 // `yarn android` runs `adb reverse tcp:5000 tcp:5000`, so Android can
 // reach the backend through localhost without depending on a changing LAN IP.
@@ -13,11 +14,15 @@ function getMetroHost() {
 }
 
 export function resolveApiHost() {
+  if (!__DEV__) {
+    return PRODUCTION_API_HOST;
+  }
+
   const metroHost = getMetroHost();
 
   // Prefer the host that served the JS bundle so Wi-Fi devices can reach the
   // local backend even when adb reverse is not available.
-  if (__DEV__ && Platform.OS === 'android') {
+  if (Platform.OS === 'android') {
     return metroHost || LAN_FALLBACK_HOST;
   }
 
