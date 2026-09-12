@@ -1,16 +1,11 @@
 import React from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { CameraIcon, DocumentIcon } from './ChatIcons';
-
-function GalleryGlyph({ color }) {
-  return (
-    <View style={{ width: 20, height: 18 }}>
-      <View style={[styles.galleryBody, { backgroundColor: color }]} />
-      <View style={[styles.galleryDot, { backgroundColor: color }]} />
-      <View style={[styles.gallerySun, { backgroundColor: 'rgba(255,255,255,0.4)' }]} />
-    </View>
-  );
-}
+import {
+  CameraIcon,
+  DocumentIcon,
+  getChatIconButtonTokens,
+  ImageIcon,
+} from './ChatIcons';
 
 /**
  * Bottom sheet with the three share sources: gallery, camera and documents.
@@ -23,6 +18,8 @@ export default function AttachmentSheet({
   onCamera,
   onDocument,
 }) {
+  const actionTokens = getChatIconButtonTokens(theme);
+
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
@@ -32,24 +29,27 @@ export default function AttachmentSheet({
           <Text style={[styles.title, { color: theme.ink }]}>Share something</Text>
           <View style={styles.grid}>
           <OptionRow
-            icon={<GalleryGlyph color={theme.primaryLight} />}
+            icon={<ImageIcon color={actionTokens.iconColor} size={21} />}
             title="Gallery"
             subtitle="Send a photo from your device"
             theme={theme}
+            tokens={actionTokens}
             onPress={onGallery}
           />
           <OptionRow
-            icon={<CameraIcon color={theme.primaryLight} size={19} />}
+            icon={<CameraIcon color={actionTokens.iconColor} size={21} />}
             title="Camera"
             subtitle="Take a new photo"
             theme={theme}
+            tokens={actionTokens}
             onPress={onCamera}
           />
           <OptionRow
-            icon={<DocumentIcon color={theme.primaryLight} size={20} />}
+            icon={<DocumentIcon color={actionTokens.iconColor} size={21} />}
             title="Document"
             subtitle="Share a PDF or other file"
             theme={theme}
+            tokens={actionTokens}
             onPress={onDocument}
           />
 
@@ -63,13 +63,22 @@ export default function AttachmentSheet({
   );
 }
 
-function OptionRow({ icon, title, theme, onPress }) {
+function OptionRow({ icon, title, theme, tokens, onPress }) {
   return (
     <TouchableOpacity
       style={[styles.row, { borderBottomColor: theme.line }]}
       onPress={onPress}
       activeOpacity={0.7}>
-      <View style={[styles.iconCircle, { backgroundColor: theme.surfaceAlt }]}>{icon}</View>
+      <View
+        style={[
+          styles.iconCircle,
+          {
+            backgroundColor: tokens.backgroundColor,
+            borderColor: tokens.borderColor,
+          },
+        ]}>
+        {icon}
+      </View>
       <View style={styles.rowText}>
         <Text style={[styles.rowTitle, { color: theme.ink }]}>{title}</Text>
       </View>
@@ -112,9 +121,10 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
   iconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -139,30 +149,5 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     fontWeight: '700',
-  },
-  galleryBody: {
-    position: 'absolute',
-    top: 2,
-    left: 0,
-    width: 20,
-    height: 15,
-    borderRadius: 3,
-  },
-  galleryDot: {
-    position: 'absolute',
-    top: 8,
-    left: 6,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-  },
-  gallerySun: {
-    position: 'absolute',
-    top: 4,
-    right: 3,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
   },
 });

@@ -13,7 +13,7 @@ export default function ProjectDetailModal({
     t => (t.projectId?._id || t.projectId) === project._id,
   );
   return (
-    <Modal visible={visible} animationType="slide">
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 bg-canvas">
         <View
           className="rounded-b-[32px] px-5 pb-8 pt-6"

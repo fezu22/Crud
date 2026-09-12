@@ -69,6 +69,7 @@ import {
   PaperclipIcon,
   SendIcon,
   VideoIcon,
+  getChatIconButtonTokens,
 } from '../../components/chat/ChatIcons';
 
 import { FadeSlideIn } from '../../components/motion';
@@ -322,6 +323,8 @@ export default function PremiumChatScreen({
   ).current;
 
   const theme = getChatTheme(themeMode);
+  const secondaryIconTokens = getChatIconButtonTokens(theme);
+  const sendIconTokens = getChatIconButtonTokens(theme, 'primary');
   const navigation = useNavigation();
 
   const currentUserId =
@@ -1561,14 +1564,20 @@ export default function PremiumChatScreen({
             </FadeSlideIn>
           ) : null}
           <TouchableOpacity
-            style={[styles.composerButton, { backgroundColor: theme.surfaceAlt, borderColor: theme.line, borderWidth: 1, borderRadius: 14 }]}
+            style={[
+              styles.composerButton,
+              {
+                backgroundColor: secondaryIconTokens.backgroundColor,
+                borderColor: secondaryIconTokens.borderColor,
+              },
+            ]}
             onPress={() =>
               setAttachmentOpen(true)
             }
             accessibilityLabel="Attach a file">
             <PaperclipIcon
-              color={theme.primaryLight}
-              size={19}
+              color={secondaryIconTokens.iconColor}
+              size={20}
             />
           </TouchableOpacity>
 
@@ -1595,23 +1604,30 @@ export default function PremiumChatScreen({
                 styles.sendButton,
                 {
                   backgroundColor:
-                    theme.outgoingBase,
+                    sendIconTokens.backgroundColor,
+                  borderColor: sendIconTokens.borderColor,
                 },
               ]}
               onPress={sendText}
               accessibilityLabel="Send message">
               <SendIcon
-                color={theme.outgoingInk}
-                size={18}
+                color={sendIconTokens.iconColor}
+                size={19}
               />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
-              style={styles.composerButton}
+              style={[
+                styles.composerButton,
+                {
+                  backgroundColor: secondaryIconTokens.backgroundColor,
+                  borderColor: secondaryIconTokens.borderColor,
+                },
+              ]}
               onPress={startVoiceRecording}
               accessibilityLabel="Record voice message">
               <MicIcon
-                color={theme.muted}
+                color={secondaryIconTokens.iconColor}
                 size={20}
               />
             </TouchableOpacity>
@@ -1908,8 +1924,10 @@ const styles = StyleSheet.create({
   },
 
   composerButton: {
-    width: 40,
-    height: 46,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1926,9 +1944,10 @@ const styles = StyleSheet.create({
   },
 
   sendButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

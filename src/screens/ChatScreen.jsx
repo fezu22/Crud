@@ -357,6 +357,11 @@ export default function ChatScreen({
     }
   }, [currentUserId, token]);
 
+  const closeActiveChat = useCallback(() => {
+    setActive(null);
+    refreshConversations(false);
+  }, [refreshConversations]);
+
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
@@ -471,6 +476,10 @@ export default function ChatScreen({
   }, [currentUserId, token]);
 
   useEffect(() => {
+    if (active) {
+      return undefined;
+    }
+
     const handleHardwareBack = () => {
       if (deleteDialog) {
         cancelDeleteSelection();
@@ -487,19 +496,13 @@ export default function ChatScreen({
         return true;
       }
 
-      if (active) {
-        setActive(null);
-        refreshConversations();
-        return true;
-      }
-
       onExitChat?.();
       return true;
     };
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBack);
     return () => subscription.remove();
-  }, [active, cancelDeleteSelection, deleteDialog, onExitChat, pickerOpen, refreshConversations, selectedConversationIds.length]);
+  }, [active, cancelDeleteSelection, deleteDialog, onExitChat, pickerOpen, selectedConversationIds.length]);
 
   if (active) {
     return (
@@ -511,10 +514,7 @@ export default function ChatScreen({
         zegoStatus={zegoStatus}
         onRetryZego={onRetryZego}
         onError={onError}
-        onBack={() => {
-          setActive(null);
-          refreshConversations();
-        }}
+        onBack={closeActiveChat}
       />
     );
   }

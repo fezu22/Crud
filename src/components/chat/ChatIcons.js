@@ -7,6 +7,24 @@ import { View } from 'react-native';
  * identically on every Android device without an icon-font dependency.
  */
 
+export const CHAT_ICON_BUTTON_SIZE = 44;
+
+export function getChatIconButtonTokens(theme, variant = 'secondary') {
+  if (variant === 'primary') {
+    return {
+      backgroundColor: theme.outgoingBase || theme.primary,
+      borderColor: 'transparent',
+      iconColor: theme.outgoingInk || '#FFFFFF',
+    };
+  }
+
+  return {
+    backgroundColor: theme.surfaceAlt || theme.surface,
+    borderColor: theme.line,
+    iconColor: theme.primaryLight || theme.primary || theme.ink,
+  };
+}
+
 export function CheckIcon({ color, size = 13 }) {
   return (
     <View style={{ width: size, height: size }}>
@@ -53,17 +71,29 @@ export function DoubleCheckIcon({ color, size = 15 }) {
 
 export function SendIcon({ color, size = 20 }) {
   return (
-    <View style={{ width: size, height: size, transform: [{ rotate: '90deg' }] }}>
+    <View style={{ width: size, height: size }}>
       <View
         style={{
-          width: 0,
-          height: 0,
-          borderLeftWidth: size * 0.38,
-          borderRightWidth: size * 0.38,
-          borderBottomWidth: size * 0.9,
-          borderLeftColor: 'transparent',
-          borderRightColor: 'transparent',
-          borderBottomColor: color,
+          position: 'absolute',
+          width: size * 0.92,
+          height: size * 0.92,
+          borderTopWidth: size * 0.12,
+          borderRightWidth: size * 0.12,
+          borderColor: color,
+          transform: [{ rotate: '45deg' }],
+          top: size * 0.04,
+          left: -size * 0.12,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: size * 0.6,
+          height: size * 0.12,
+          borderRadius: size * 0.06,
+          backgroundColor: color,
+          top: size * 0.44,
+          left: size * 0.1,
         }}
       />
     </View>
@@ -72,13 +102,14 @@ export function SendIcon({ color, size = 20 }) {
 
 export function VideoIcon({ color, size = 20 }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+    <View style={{ width: size * 1.2, height: size, flexDirection: 'row', alignItems: 'center' }}>
       <View
         style={{
           width: size * 0.85,
           height: size * 0.62,
           borderRadius: size * 0.16,
-          backgroundColor: color,
+          borderWidth: size * 0.11,
+          borderColor: color,
         }}
       />
       <View
@@ -102,16 +133,47 @@ export function PhoneIcon({ color, size = 20 }) {
   return (
     <View
       style={{
-        width: size * 0.62,
+        width: size,
         height: size,
-        borderTopLeftRadius: size * 0.34,
-        borderTopRightRadius: size * 0.34,
-        borderBottomLeftRadius: size * 0.42,
-        borderBottomRightRadius: size * 0.42,
-        backgroundColor: color,
         transform: [{ rotate: '-38deg' }],
-      }}
-    />
+      }}>
+      <View
+        style={{
+          position: 'absolute',
+          left: size * 0.23,
+          top: size * 0.05,
+          width: size * 0.54,
+          height: size * 0.9,
+          borderWidth: size * 0.13,
+          borderColor: color,
+          borderRadius: size * 0.28,
+          borderTopColor: 'transparent',
+          borderBottomColor: 'transparent',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: size * 0.1,
+          top: size * 0.08,
+          width: size * 0.34,
+          height: size * 0.3,
+          borderRadius: size * 0.12,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          right: size * 0.1,
+          bottom: size * 0.08,
+          width: size * 0.34,
+          height: size * 0.3,
+          borderRadius: size * 0.12,
+          backgroundColor: color,
+        }}
+      />
+    </View>
   );
 }
 
@@ -205,8 +267,68 @@ export function PaperclipIcon({ color, size = 20 }) {
         borderWidth: size * 0.12,
         borderColor: color,
         transform: [{ rotate: '45deg' }],
-      }}
-    />
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      <View
+        style={{
+          width: size * 0.3,
+          height: size * 0.62,
+          borderRadius: size * 0.15,
+          borderWidth: size * 0.1,
+          borderColor: color,
+          borderTopColor: 'transparent',
+        }}
+      />
+    </View>
+  );
+}
+
+export function ImageIcon({ color, size = 20 }) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size * 0.8,
+        borderRadius: size * 0.14,
+        borderWidth: size * 0.1,
+        borderColor: color,
+        overflow: 'hidden',
+      }}>
+      <View
+        style={{
+          position: 'absolute',
+          top: size * 0.16,
+          right: size * 0.16,
+          width: size * 0.18,
+          height: size * 0.18,
+          borderRadius: size * 0.09,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: size * 0.1,
+          bottom: -size * 0.08,
+          width: size * 0.48,
+          height: size * 0.48,
+          backgroundColor: color,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          right: size * 0.06,
+          bottom: -size * 0.1,
+          width: size * 0.42,
+          height: size * 0.42,
+          backgroundColor: color,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+    </View>
   );
 }
 

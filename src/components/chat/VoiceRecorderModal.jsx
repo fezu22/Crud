@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Modal, NativeModules, PermissionsAndroid, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { MicIcon } from './ChatIcons';
+import { getChatIconButtonTokens, MicIcon } from './ChatIcons';
 import { formatDuration } from './VoiceMessageBubble';
 import Sound, { AudioSourceAndroidType } from 'react-native-nitro-sound';
 
@@ -34,6 +34,7 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, o
   const intervalRef = useRef(null);
   const startupTimerRef = useRef(null);
   const onErrorRef = useRef(onError);
+  const iconTokens = getChatIconButtonTokens(theme);
 
   onErrorRef.current = onError;
 
@@ -177,7 +178,16 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, o
           </View>
 
           <View style={[styles.waveCard, { backgroundColor: theme.surfaceAlt }]}>
-            <MicIcon color={theme.primaryLight} size={22} />
+            <View
+              style={[
+                styles.recordingIcon,
+                {
+                  backgroundColor: iconTokens.backgroundColor,
+                  borderColor: iconTokens.borderColor,
+                },
+              ]}>
+              <MicIcon color={iconTokens.iconColor} size={22} />
+            </View>
             <Text style={[styles.timer, { color: theme.ink }]}>{formatDuration(seconds)}</Text>
             <View style={styles.waveform}>
               {waveform.map((level, index) => (
@@ -275,6 +285,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 26,
     paddingHorizontal: 16,
+  },
+  recordingIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   waveform: {
     width: '100%',

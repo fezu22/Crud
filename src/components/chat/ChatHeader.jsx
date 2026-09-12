@@ -2,7 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PresenceIndicator from './PresenceIndicator';
 import { PressableScale } from '../motion';
-import { PhoneIcon, VideoIcon } from './ChatIcons';
+import {
+  BackIcon,
+  CHAT_ICON_BUTTON_SIZE,
+  getChatIconButtonTokens,
+  PhoneIcon,
+  VideoIcon,
+} from './ChatIcons';
 import { setZegoCallThemeMode } from './ZegoCallUi';
 
 function initialsOf(name) {
@@ -54,6 +60,7 @@ export default function ChatHeader({
   const [showLastSeen, setShowLastSeen] = useState(true);
   const statusOpacity = useRef(new Animated.Value(1)).current;
   const shouldCyclePresence = !online && Boolean(lastSeenText) && zegoStatus === 'ready';
+  const actionTokens = getChatIconButtonTokens(theme);
 
   useEffect(() => {
     let active = true;
@@ -112,8 +119,14 @@ export default function ChatHeader({
           onPress={onBack}
           hitSlop={10}
           accessibilityLabel="Back to messages"
-          style={[styles.backAction, { backgroundColor: theme.surfaceAlt, borderColor: theme.line }]}>
-          <Text style={[styles.backGlyph, { color: theme.ink }]}>{'\u2039'}</Text>
+          style={[
+            styles.backAction,
+            {
+              backgroundColor: actionTokens.backgroundColor,
+              borderColor: actionTokens.borderColor,
+            },
+          ]}>
+          <BackIcon color={actionTokens.iconColor} size={22} />
         </PressableScale>
 
         <View style={[styles.avatar, { backgroundColor: theme.separatorBg, borderColor: theme.primary }]}>
@@ -151,10 +164,13 @@ export default function ChatHeader({
           accessibilityLabel="Start voice call"
           style={[
             styles.headerActionButton,
-            { backgroundColor: theme.separatorBg, borderColor: theme.line },
+            {
+              backgroundColor: actionTokens.backgroundColor,
+              borderColor: actionTokens.borderColor,
+            },
             !canInvite && styles.unavailableAction,
           ]}>
-          <PhoneIcon color={theme.primaryLight} size={23} />
+          <PhoneIcon color={actionTokens.iconColor} size={22} />
         </TouchableOpacity>
         <TouchableOpacity
           disabled={!canInvite}
@@ -162,10 +178,13 @@ export default function ChatHeader({
           accessibilityLabel="Start video call"
           style={[
             styles.headerActionButton,
-            { backgroundColor: theme.separatorBg, borderColor: theme.line },
+            {
+              backgroundColor: actionTokens.backgroundColor,
+              borderColor: actionTokens.borderColor,
+            },
             !canInvite && styles.unavailableAction,
           ]}>
-          <VideoIcon color={theme.primaryLight} size={23} />
+          <VideoIcon color={actionTokens.iconColor} size={22} />
         </TouchableOpacity>
       </View>
     </View>
@@ -228,9 +247,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   headerActionButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: CHAT_ICON_BUTTON_SIZE,
+    height: CHAT_ICON_BUTTON_SIZE,
+    borderRadius: CHAT_ICON_BUTTON_SIZE / 2,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -239,19 +258,13 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   backAction: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: CHAT_ICON_BUTTON_SIZE,
+    height: CHAT_ICON_BUTTON_SIZE,
+    borderRadius: CHAT_ICON_BUTTON_SIZE / 2,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 0,
     marginRight: 10,
-  },
-  backGlyph: {
-    fontSize: 26,
-    lineHeight: 30,
-    fontWeight: '600',
-    marginTop: -2,
   },
 });
