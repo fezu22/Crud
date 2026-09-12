@@ -1,14 +1,18 @@
-import React from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+﻿import React from 'react';
 import {
-  CameraIcon,
-  DocumentIcon,
-  getChatIconButtonTokens,
-  ImageIcon,
-} from './ChatIcons';
+  Image,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+
+import { getChatIconButtonTokens } from './ChatIcons';
 
 /**
- * Bottom sheet with the three share sources: gallery, camera and documents.
+ * Bottom sheet with the three share sources:
+ * gallery, camera and documents.
  */
 export default function AttachmentSheet({
   visible,
@@ -21,41 +25,77 @@ export default function AttachmentSheet({
   const actionTokens = getChatIconButtonTokens(theme);
 
   return (
-    <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal
+      transparent
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <TouchableOpacity style={styles.backdropTouch} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: theme.surface }]}>
-          <View style={[styles.handle, { backgroundColor: theme.line }]} />
-          <Text style={[styles.title, { color: theme.ink }]}>Share something</Text>
-          <View style={styles.grid}>
-          <OptionRow
-            icon={<ImageIcon color={actionTokens.iconColor} size={21} />}
-            title="Gallery"
-            subtitle="Send a photo from your device"
-            theme={theme}
-            tokens={actionTokens}
-            onPress={onGallery}
-          />
-          <OptionRow
-            icon={<CameraIcon color={actionTokens.iconColor} size={21} />}
-            title="Camera"
-            subtitle="Take a new photo"
-            theme={theme}
-            tokens={actionTokens}
-            onPress={onCamera}
-          />
-          <OptionRow
-            icon={<DocumentIcon color={actionTokens.iconColor} size={21} />}
-            title="Document"
-            subtitle="Share a PDF or other file"
-            theme={theme}
-            tokens={actionTokens}
-            onPress={onDocument}
+        <TouchableOpacity
+          style={styles.backdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
+        <View
+          style={[
+            styles.sheet,
+            { backgroundColor: theme.surface },
+          ]}>
+          <View
+            style={[
+              styles.handle,
+              { backgroundColor: theme.line },
+            ]}
           />
 
+          <Text
+            style={[
+              styles.title,
+              { color: theme.ink },
+            ]}>
+            Share something
+          </Text>
+
+          <View style={styles.grid}>
+            <OptionRow
+              iconSource={require('../../assets/image.png')}
+              title="Gallery"
+              theme={theme}
+              tokens={actionTokens}
+              onPress={onGallery}
+            />
+
+            <OptionRow
+              iconSource={require('../../assets/camera.png')}
+              title="Camera"
+              theme={theme}
+              tokens={actionTokens}
+              onPress={onCamera}
+            />
+
+            <OptionRow
+              iconSource={require('../../assets/google-docs.png')}
+              title="Document"
+              theme={theme}
+              tokens={actionTokens}
+              onPress={onDocument}
+            />
           </View>
-          <TouchableOpacity style={[styles.cancel, { borderColor: theme.line }]} onPress={onClose}>
-            <Text style={[styles.cancelText, { color: theme.muted }]}>Cancel</Text>
+
+          <TouchableOpacity
+            style={[
+              styles.cancel,
+              { borderColor: theme.line },
+            ]}
+            onPress={onClose}>
+            <Text
+              style={[
+                styles.cancelText,
+                { color: theme.muted },
+              ]}>
+              Cancel
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -63,10 +103,19 @@ export default function AttachmentSheet({
   );
 }
 
-function OptionRow({ icon, title, theme, tokens, onPress }) {
+function OptionRow({
+  iconSource,
+  title,
+  theme,
+  tokens,
+  onPress,
+}) {
   return (
     <TouchableOpacity
-      style={[styles.row, { borderBottomColor: theme.line }]}
+      style={[
+        styles.row,
+        { borderBottomColor: theme.line },
+      ]}
       onPress={onPress}
       activeOpacity={0.7}>
       <View
@@ -77,25 +126,42 @@ function OptionRow({ icon, title, theme, tokens, onPress }) {
             borderColor: tokens.borderColor,
           },
         ]}>
-        {icon}
+        <Image
+          source={iconSource}
+          style={styles.iconImage}
+          resizeMode="contain"
+        />
       </View>
+
       <View style={styles.rowText}>
-        <Text style={[styles.rowTitle, { color: theme.ink }]}>{title}</Text>
+        <Text
+          style={[
+            styles.rowTitle,
+            { color: theme.ink },
+          ]}>
+          {title}
+        </Text>
       </View>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  grid: { flexDirection: 'row', gap: 10 },
+  grid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
     justifyContent: 'flex-end',
   },
+
   backdropTouch: {
     flex: 1,
   },
+
   sheet: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -103,6 +169,7 @@ const styles = StyleSheet.create({
     paddingBottom: 22,
     paddingTop: 10,
   },
+
   handle: {
     alignSelf: 'center',
     width: 44,
@@ -110,16 +177,19 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginBottom: 12,
   },
+
   title: {
     fontSize: 17,
     fontWeight: '800',
     marginBottom: 8,
   },
+
   row: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 13,
   },
+
   iconCircle: {
     width: 46,
     height: 46,
@@ -129,17 +199,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 10,
   },
+
+  iconImage: {
+    width: 24,
+    height: 24,
+  },
+
   rowText: {
     alignItems: 'center',
   },
+
   rowTitle: {
     fontSize: 15,
     fontWeight: '700',
   },
-  rowSubtitle: {
-    fontSize: 12,
-    marginTop: 1,
-  },
+
   cancel: {
     marginTop: 14,
     borderWidth: 1,
@@ -147,6 +221,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
   },
+
   cancelText: {
     fontWeight: '700',
   },

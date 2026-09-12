@@ -1,14 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Animated,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+
 import PresenceIndicator from './PresenceIndicator';
 import { PressableScale } from '../motion';
+
 import {
-  BackIcon,
   CHAT_ICON_BUTTON_SIZE,
   getChatIconButtonTokens,
   PhoneIcon,
   VideoIcon,
 } from './ChatIcons';
+
 import { setZegoCallThemeMode } from './ZegoCallUi';
 
 function initialsOf(name) {
@@ -23,23 +31,38 @@ function initialsOf(name) {
 
 function formatLastSeen(value) {
   const lastSeen = value ? new Date(value) : null;
-  if (!lastSeen || Number.isNaN(lastSeen.getTime())) return null;
+
+  if (!lastSeen || Number.isNaN(lastSeen.getTime())) {
+    return null;
+  }
 
   const elapsed = Math.max(0, Date.now() - lastSeen.getTime());
   const minutes = Math.floor(elapsed / 60000);
-  if (minutes < 1) return 'Last seen just now';
-  if (minutes < 60) return `Last seen ${minutes}m ago`;
+
+  if (minutes < 1) {
+    return 'Last seen just now';
+  }
+
+  if (minutes < 60) {
+    return `Last seen ${minutes}m ago`;
+  }
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Last seen ${hours}h ago`;
-  if (hours < 48) return 'Last seen yesterday';
-  return `Last seen ${lastSeen.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+
+  if (hours < 24) {
+    return `Last seen ${hours}h ago`;
+  }
+
+  if (hours < 48) {
+    return 'Last seen yesterday';
+  }
+
+  return `Last seen ${lastSeen.toLocaleDateString([], {
+    day: 'numeric',
+    month: 'short',
+  })}`;
 }
 
-/**
- * Chat header: back button, avatar, contact name with an animated presence
- * indicator, and the two call actions.
- */
 export default function ChatHeader({
   theme,
   contact,
@@ -50,24 +73,44 @@ export default function ChatHeader({
   onStartCall,
 }) {
   const online = Boolean(contact?.online);
+
   const onlinePresenceColor = '#22c55e';
+
   const contactId = contact?.id || contact?._id;
+
   const canInvite =
     zegoStatus === 'ready' &&
     Boolean(contactId) &&
     String(contactId) !== String(currentUserId);
-  const lastSeenText = formatLastSeen(contact?.lastSeenAt || contact?.lastActiveAt);
+
+  const lastSeenText = formatLastSeen(
+    contact?.lastSeenAt || contact?.lastActiveAt,
+  );
+
   const [showLastSeen, setShowLastSeen] = useState(true);
+
   const statusOpacity = useRef(new Animated.Value(1)).current;
-  const shouldCyclePresence = !online && Boolean(lastSeenText) && zegoStatus === 'ready';
+
+  const shouldCyclePresence =
+    !online &&
+    Boolean(lastSeenText) &&
+    zegoStatus === 'ready';
+
   const actionTokens = getChatIconButtonTokens(theme);
 
   useEffect(() => {
     let active = true;
+
     statusOpacity.stopAnimation();
     statusOpacity.setValue(1);
+
     setShowLastSeen(true);
-    if (!shouldCyclePresence) return () => { active = false; };
+
+    if (!shouldCyclePresence) {
+      return () => {
+        active = false;
+      };
+    }
 
     const interval = setInterval(() => {
       Animated.timing(statusOpacity, {
@@ -75,8 +118,12 @@ export default function ChatHeader({
         duration: 300,
         useNativeDriver: true,
       }).start(({ finished }) => {
-        if (!active || !finished) return;
+        if (!active || !finished) {
+          return;
+        }
+
         setShowLastSeen(current => !current);
+
         Animated.timing(statusOpacity, {
           toValue: 1,
           duration: 300,
@@ -97,14 +144,21 @@ export default function ChatHeader({
     : showLastSeen && lastSeenText
       ? lastSeenText
       : 'Offline';
-  const callStatusText = zegoStatus === 'error'
-    ? 'Calls unavailable — tap a call button to retry'
-    : zegoStatus === 'initializing'
-      ? 'Connecting call service…'
-      : presenceText;
+
+  const callStatusText =
+    zegoStatus === 'error'
+      ? 'Calls unavailable — tap a call button to retry'
+      : zegoStatus === 'initializing'
+        ? 'Connecting call service…'
+        : presenceText;
+
   const startCall = type => {
-    if (!canInvite) return;
+    if (!canInvite) {
+      return;
+    }
+
     setZegoCallThemeMode(themeMode);
+
     onStartCall?.(type);
   };
 
@@ -112,52 +166,113 @@ export default function ChatHeader({
     <View
       style={[
         styles.header,
-        { backgroundColor: theme.background, borderBottomColor: theme.line },
+        {
+          backgroundColor: theme.background,
+          borderBottomColor: theme.line,
+        },
       ]}>
+
       <View style={styles.userSection}>
+
         <PressableScale
           onPress={onBack}
-          hitSlop={10}
+          hitSlop={12}
           accessibilityLabel="Back to messages"
           style={[
             styles.backAction,
             {
-              backgroundColor: actionTokens.backgroundColor,
-              borderColor: actionTokens.borderColor,
+              backgroundColor:
+                theme.surfaceAlt ||
+                theme.surface ||
+                'transparent',
             },
           ]}>
-          <BackIcon color={actionTokens.iconColor} size={22} />
+
+          <Text
+            style={[
+              styles.backChevron,
+              {
+                color:
+                  theme.primaryLight ||
+                  theme.primary ||
+                  theme.ink,
+              },
+            ]}>
+            ‹
+          </Text>
+
         </PressableScale>
 
-        <View style={[styles.avatar, { backgroundColor: theme.separatorBg, borderColor: theme.primary }]}>
-          <Text style={[styles.avatarText, { color: theme.primaryLight }]}>{initialsOf(contact?.name)}</Text>
+        <View
+          style={[
+            styles.avatar,
+            {
+              backgroundColor: theme.separatorBg,
+              borderColor: theme.primary,
+            },
+          ]}>
+
+          <Text
+            style={[
+              styles.avatarText,
+              {
+                color: theme.primaryLight,
+              },
+            ]}>
+            {initialsOf(contact?.name)}
+          </Text>
+
         </View>
 
         <View style={styles.identity}>
+
           <Text
-            style={[styles.name, { color: theme.ink }]}
+            style={[
+              styles.name,
+              {
+                color: theme.ink,
+              },
+            ]}
             numberOfLines={1}
             ellipsizeMode="tail">
             {contact?.name || 'Medi user'}
           </Text>
+
           <View style={styles.statusRow}>
+
             <PresenceIndicator
               online={online}
               size={8}
               onlineColor={onlinePresenceColor}
               offlineColor={theme.offlineDot}
             />
+
             <Animated.Text
               style={[
                 styles.statusText,
-                { color: online ? onlinePresenceColor : theme.muted },
-                { opacity: zegoStatus === 'ready' ? statusOpacity : 1 },
-              ]}>{callStatusText}</Animated.Text>
+                {
+                  color: online
+                    ? onlinePresenceColor
+                    : theme.muted,
+                },
+                {
+                  opacity:
+                    zegoStatus === 'ready'
+                      ? statusOpacity
+                      : 1,
+                },
+              ]}>
+              {callStatusText}
+            </Animated.Text>
+
           </View>
+
         </View>
+
       </View>
 
       <View style={styles.headerActions}>
+
         <TouchableOpacity
           disabled={!canInvite}
           onPress={() => startCall('voice')}
@@ -165,13 +280,21 @@ export default function ChatHeader({
           style={[
             styles.headerActionButton,
             {
-              backgroundColor: actionTokens.backgroundColor,
-              borderColor: actionTokens.borderColor,
+              backgroundColor:
+                actionTokens.backgroundColor,
+              borderColor:
+                actionTokens.borderColor,
             },
             !canInvite && styles.unavailableAction,
           ]}>
-          <PhoneIcon color={actionTokens.iconColor} size={22} />
+
+          <PhoneIcon
+            color={actionTokens.iconColor}
+            size={22}
+          />
+
         </TouchableOpacity>
+
         <TouchableOpacity
           disabled={!canInvite}
           onPress={() => startCall('video')}
@@ -179,14 +302,23 @@ export default function ChatHeader({
           style={[
             styles.headerActionButton,
             {
-              backgroundColor: actionTokens.backgroundColor,
-              borderColor: actionTokens.borderColor,
+              backgroundColor:
+                actionTokens.backgroundColor,
+              borderColor:
+                actionTokens.borderColor,
             },
             !canInvite && styles.unavailableAction,
           ]}>
-          <VideoIcon color={actionTokens.iconColor} size={22} />
+
+          <VideoIcon
+            color={actionTokens.iconColor}
+            size={22}
+          />
+
         </TouchableOpacity>
+
       </View>
+
     </View>
   );
 }
@@ -200,6 +332,32 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1,
   },
+
+  userSection: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  backAction: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 0,
+    marginRight: 8,
+  },
+
+  backChevron: {
+    fontSize: 32,
+    lineHeight: 34,
+    fontWeight: '300',
+    textAlign: 'center',
+    marginTop: -2,
+  },
+
   avatar: {
     width: 40,
     height: 40,
@@ -209,36 +367,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
+
   avatarText: {
     fontWeight: '800',
     fontSize: 14,
   },
-  userSection: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+
   identity: {
     flex: 1,
     minWidth: 0,
     paddingRight: 8,
   },
+
   name: {
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.1,
   },
+
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 2,
     height: 18,
   },
+
   statusText: {
     fontSize: 12,
     fontWeight: '600',
   },
+
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -246,6 +404,7 @@ const styles = StyleSheet.create({
     gap: 8,
     flexShrink: 0,
   },
+
   headerActionButton: {
     width: CHAT_ICON_BUTTON_SIZE,
     height: CHAT_ICON_BUTTON_SIZE,
@@ -254,17 +413,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   unavailableAction: {
     opacity: 0.45,
-  },
-  backAction: {
-    width: CHAT_ICON_BUTTON_SIZE,
-    height: CHAT_ICON_BUTTON_SIZE,
-    borderRadius: CHAT_ICON_BUTTON_SIZE / 2,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 0,
-    marginRight: 10,
   },
 });

@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, NativeModules, PermissionsAndroid, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { getChatIconButtonTokens, MicIcon } from './ChatIcons';
+﻿import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, Modal, NativeModules, PermissionsAndroid, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { getChatIconButtonTokens } from './ChatIcons';
 import { formatDuration } from './VoiceMessageBubble';
 import Sound, { AudioSourceAndroidType } from 'react-native-nitro-sound';
 
@@ -20,7 +20,7 @@ function meteringToAmplitude(value) {
 
 /**
  * Recording overlay: pulsing red indicator, running timer, cancel and send.
- * The recorder is a stable demo implementation — it measures real elapsed
+ * The recorder is a stable demo implementation â€” it measures real elapsed
  * time and produces a simulated voice message, without touching a
  * microphone buffer, so it cannot crash on devices without an audio module.
  */
@@ -186,7 +186,11 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, o
                   borderColor: iconTokens.borderColor,
                 },
               ]}>
-              <MicIcon color={iconTokens.iconColor} size={22} />
+              <Image
+                source={require('../../assets/microphone-black-shape.png')}
+                style={{ width: 22, height: 22 }}
+                resizeMode="contain"
+              />
             </View>
             <Text style={[styles.timer, { color: theme.ink }]}>{formatDuration(seconds)}</Text>
             <View style={styles.waveform}>
@@ -204,7 +208,7 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, o
               ))}
             </View>
             <Text style={[styles.hint, { color: theme.muted }]}>
-              {startError || (starting ? 'Starting recorder…' : 'Recording voice message… speak now')}
+              {startError || (starting ? 'Starting recorderâ€¦' : 'Recording voice messageâ€¦ speak now')}
             </Text>
           </View>
 
@@ -228,7 +232,7 @@ export default function VoiceRecorderModal({ visible, theme, onCancel, onSend, o
                   fileName: `voice_${Date.now()}.m4a`,
                 }, waveform);
               }}>
-              <Text style={styles.sendText}>{starting ? 'Starting…' : 'Send'}</Text>
+              <Text style={styles.sendText}>{starting ? 'Startingâ€¦' : 'Send'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -340,3 +344,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
+
