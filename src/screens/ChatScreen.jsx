@@ -4,6 +4,7 @@ import {
   Animated,
   BackHandler,
   FlatList,
+  Image,
   Keyboard,
   Modal,
   Text,
@@ -199,9 +200,16 @@ function UserPicker({ visible, users, adminContact, query, loading, onQuery, onC
                     className="flex-row items-center border-b border-line py-3"
                     onPress={() => onSelect(item)}
                     accessibilityLabel={`Chat with ${item.name || 'user'}`}>
-                    <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.separatorBg }}>
-                      <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.name)}</Text>
-                    </View>
+                    {item.profileImageUrl ? (
+                      <Image
+                        source={{ uri: item.profileImageUrl }}
+                        className="mr-3 h-12 w-12 rounded-full"
+                      />
+                    ) : (
+                      <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.separatorBg }}>
+                        <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.name)}</Text>
+                      </View>
+                    )}
                     <View className="flex-1">
                       <View className="flex-row items-center">
                         <PresenceIndicator
@@ -242,6 +250,8 @@ export default function ChatScreen({
   zegoStatus = 'idle',
   onRetryZego,
   onExitChat,
+  openChatUserId,
+  onOpenChatHandled,
 }) {
   const theme = getChatTheme(themeMode);
   const [search, setSearch] = useState('');
@@ -504,6 +514,16 @@ export default function ChatScreen({
     return () => subscription.remove();
   }, [active, cancelDeleteSelection, deleteDialog, onExitChat, pickerOpen, selectedConversationIds.length]);
 
+  useEffect(() => {
+    if (!openChatUserId || active) return;
+    const targetId = String(openChatUserId);
+    const conversation = conversations.find(item => (
+      String(item?.user?.id || item?.user?._id || '') === targetId
+    ));
+    setActive(conversation?.user || { id: targetId, _id: targetId, name: 'Medi user' });
+    onOpenChatHandled?.();
+  }, [active, conversations, onOpenChatHandled, openChatUserId]);
+
   if (active) {
     return (
       <PremiumChatScreen
@@ -605,9 +625,17 @@ export default function ChatScreen({
               accessibilityLabel={selected
                 ? `Deselect chat with ${item.user.name || 'user'}`
                 : `Open chat with ${item.user.name || 'user'}`}>
-              <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.line }}>
-                <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.user.name)}</Text>
-              </View>
+              {item.user?.profileImageUrl ? (
+                <Image
+                  source={{ uri: item.user.profileImageUrl }}
+                  className="mr-3 h-12 w-12 rounded-full"
+                  style={{ borderWidth: 1, borderColor: theme.line }}
+                />
+              ) : (
+                <View className="mr-3 h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.line }}>
+                  <Text className="font-extrabold" style={{ color: theme.primaryLight }}>{initials(item.user.name)}</Text>
+                </View>
+              )}
               <View className="flex-1">
                 <View className="flex-row items-center justify-between">
                   <Text className="flex-1 font-extrabold text-ink" numberOfLines={1}>

@@ -32,6 +32,7 @@ const publicUser = u => ({
   name: u.name,
   email: u.email,
   role: u.role,
+  profileImageUrl: u.profileImageUrl || '',
   online: isOnline(u.lastActiveAt),
   lastSeenAt: u.lastActiveAt || null,
 });
@@ -150,7 +151,7 @@ router.get('/users', async (req, res) => {
     filter,
   )
     .select(
-      'name email role lastActiveAt',
+      'name email role profileImageUrl lastActiveAt',
     )
     .sort({ name: 1 })
     .limit(30);
@@ -227,7 +228,7 @@ router.get(
       },
     })
       .select(
-        'name email role lastActiveAt',
+        'name email role profileImageUrl lastActiveAt',
       )
       .lean();
 
@@ -321,7 +322,7 @@ router.get(
     const users =
       await User.find(filter)
         .select(
-          'name email role lastActiveAt',
+          'name email role profileImageUrl lastActiveAt',
         )
         .sort({
           name: 1,
@@ -376,6 +377,76 @@ router.get(
     }
   },
 );
+
+async function markConversationRead(req, otherUserId) {
+  const other = await User.findById(otherUserId).select('_id');
+  if (!other || String(other._id) === String(req.user._id)) {
+    return null;
+  }
+
+  const conversationId = conversationIdFor(req.user._id, other._id);
+  const now = new Date();
+  const messages = await ChatMessage.find({
+    conversationId,
+    sender: other._id,
+    $or: [
+      { receiver: req.user._id },
+      { recipient: req.user._id },
+    ],
+    deletedFor: { $ne: req.user._id },
+    read: { $ne: true },
+  }).select('_id');
+
+  const messageIds = messages.map(message => String(message._id));
+  if (!messageIds.length) {
+    return { conversationId, messageIds, readAt: now };
+  }
+
+  await ChatMessage.updateMany(
+    { _id: { $in: messageIds } },
+    {
+      $set: {
+        read: true,
+        deliveryStatus: 'read',
+        readAt: now,
+      },
+    },
+  );
+
+  const event = {
+    conversationId,
+    readerId: String(req.user._id),
+    senderId: String(other._id),
+    messageIds,
+    readAt: now.toISOString(),
+  };
+
+  console.info('[CHAT-READ] marked', {
+    conversationId,
+    readerId: event.readerId,
+    senderId: event.senderId,
+    count: messageIds.length,
+  });
+
+  const io = req.app.get('io');
+  io?.to(`conversation:${conversationId}`).emit('chat:read', event);
+  io?.to(`user:${String(req.user._id)}`).emit('chat:read', event);
+  io?.to(`user:${String(other._id)}`).emit('chat:read', event);
+
+  return event;
+}
+
+router.post('/:userId/read', async (req, res, next) => {
+  try {
+    const result = await markConversationRead(req, req.params.userId);
+    if (!result) {
+      return res.status(404).json({ message: 'Chat recipient not found' });
+    }
+    return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.post('/call-event', async (req, res, next) => {
   try {
@@ -524,7 +595,7 @@ router.get(
       await User.findById(
         req.params.userId,
       ).select(
-        'name email role lastActiveAt',
+        'name email role profileImageUrl lastActiveAt',
       );
 
     if (!other) {
@@ -556,24 +627,6 @@ router.get(
           createdAt: 1,
         })
         .limit(200);
-
-    await ChatMessage.updateMany(
-      {
-        sender:
-          other._id,
-        $or: [
-          { receiver: req.user._id },
-          { recipient: req.user._id },
-        ],
-        conversationId,
-      },
-      {
-        $set: {
-          read: true,
-          deliveryStatus: 'read',
-        },
-      },
-    );
 
     res.json({
       user:

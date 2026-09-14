@@ -322,6 +322,14 @@ export async function getChatMessages(userId, token) {
   return request(`/chat/${userId}`, { token });
 }
 
+export async function markConversationRead(userId, token) {
+  return request(`/chat/${userId}/read`, {
+    method: 'POST',
+    token,
+    fallbackMessage: 'Failed to mark messages as read',
+  });
+}
+
 export async function deleteChatMessage(userId, messageId, token) {
   return request(`/chat/${userId}/messages/${messageId}`, {
     method: 'DELETE',
@@ -368,6 +376,30 @@ export async function saveCallEvent(callEvent, token) {
     body: callEvent,
     fallbackMessage: 'Could not save call history',
   });
+}
+
+export async function uploadProfileImage(file, token) {
+  if (!file?.uri) {
+    throw new Error('Please choose a profile photo.');
+  }
+
+  const body = new FormData();
+  body.append('file', {
+    uri: file.uri,
+    type: file.type || 'image/jpeg',
+    name: file.fileName || `profile_${Date.now()}.jpg`,
+  });
+
+  const response = await apiFetch(`${API_BASE_URL}/auth/profile-image`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+    body,
+  });
+
+  return readResponse(response, 'Could not update profile image');
 }
 
 function isVideoFile(file) {

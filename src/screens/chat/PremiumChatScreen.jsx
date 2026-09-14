@@ -43,6 +43,7 @@ import {
   deleteChatMessages,
   editChatMessage,
   getChatMessages,
+  markConversationRead,
   sendChatMessage,
   saveCallEvent,
   uploadChatAttachment,
@@ -78,6 +79,8 @@ import {
   loadCachedMessages,
   saveCachedMessages,
 } from '../../storage/chatStorage';
+import { clearActiveChat, setActiveChat } from '../../services/activeChat';
+import { cancelChatNotifications } from '../../services/notifications';
 
 function sameDay(firstDate, secondDate) {
   if (!secondDate) {
@@ -243,10 +246,13 @@ function normalizeServerMessage(message, userId) {
     createdAt:
       message.createdAt ||
       new Date().toISOString(),
+    read: Boolean(message.read),
+    readAt: message.readAt || null,
+    deliveryStatus: message.deliveryStatus || (message.read ? 'read' : 'sent'),
     status: isMine
       ? message.read
         ? 'read'
-        : 'sent'
+        : message.deliveryStatus || 'sent'
       : 'read',
   };
 }
@@ -308,13 +314,14 @@ export default function PremiumChatScreen({
   const [outgoingCall, setOutgoingCall] = useState(null);
   const [callError, setCallError] = useState(null);
 
-  const statusTimers = useRef([]);
   const listRef = useRef(null);
   const nearBottom = useRef(true);
   const onErrorRef = useRef(onError);
   const hydratedConversationRef = useRef(null);
   const activeCallRef = useRef(null);
   const pendingCallTypeRef = useRef(null);
+  const readMarkInFlightRef = useRef(false);
+  const lastReadSignatureRef = useRef('');
 
   const jumpOpacity = useRef(
     new Animated.Value(0),
@@ -464,6 +471,15 @@ export default function PremiumChatScreen({
 
   useEffect(() => subscribeToZegoCallEvents((event, details) => {
     const call = activeCallRef.current;
+    if (event === 'ringing') {
+      console.info('[ZEGOCLOUD][invitation]', {
+        stage: 'chat ringing confirmed',
+        callID: details?.callID,
+        calleeId: details?.calleeId,
+      });
+      setOutgoingCall(current => current ? { ...current, ringing: true } : current);
+      return;
+    }
     if (event === 'accepted' && call && !call.answeredAt) call.answeredAt = new Date();
     const statusByEvent = { declined: 'declined', busy: 'declined', timeout: 'missed', canceled: 'cancelled', ended: 'ended' };
     if (statusByEvent[event]) {
@@ -497,6 +513,60 @@ export default function PremiumChatScreen({
     String(contactId) &&
     String(contactId) !== String(currentUserId),
   );
+
+  const markVisibleMessagesRead = useCallback(async () => {
+    if (!syncWithServer || readMarkInFlightRef.current) {
+      return;
+    }
+
+    const unreadIncomingIds = messages
+      .filter(message => message.sender === 'them' && message.read !== true)
+      .map(message => String(message._id))
+      .filter(id => id && !id.startsWith('local-'));
+
+    if (!unreadIncomingIds.length) {
+      return;
+    }
+
+    const signature = unreadIncomingIds.join(',');
+    if (lastReadSignatureRef.current === signature) {
+      return;
+    }
+
+    readMarkInFlightRef.current = true;
+    lastReadSignatureRef.current = signature;
+    try {
+      const receipt = await markConversationRead(contactId, token);
+      const ids = new Set((receipt?.messageIds || unreadIncomingIds).map(String));
+      setMessages(current => current.map(message => (
+        ids.has(String(message._id))
+          ? {
+            ...message,
+            read: true,
+            readAt: receipt?.readAt || message.readAt || new Date().toISOString(),
+            deliveryStatus: 'read',
+            status: 'read',
+          }
+          : message
+      )));
+      await cancelChatNotifications(conversationId, [...ids]);
+      console.info('[UNREAD] conversation count', {
+        conversationId,
+        unreadCount: 0,
+      });
+    } catch (error) {
+      lastReadSignatureRef.current = '';
+      onErrorRef.current?.(error);
+    } finally {
+      readMarkInFlightRef.current = false;
+    }
+  }, [contactId, conversationId, messages, syncWithServer, token]);
+
+  useEffect(() => {
+    if (!syncWithServer) return undefined;
+    setActiveChat(conversationId, contactId);
+    return () => clearActiveChat(conversationId);
+  }, [contactId, conversationId, syncWithServer]);
 
   useEffect(() => {
     if (!token || !currentUserId) {
@@ -557,6 +627,38 @@ export default function PremiumChatScreen({
       )));
     };
 
+    const onChatRead = event => {
+      if (event?.conversationId !== conversationId) return;
+      const ids = new Set((event.messageIds || []).map(String));
+      if (!ids.size) return;
+      console.info('[CHAT-READ] receipt received', {
+        conversationId,
+        readerId: event.readerId,
+        count: ids.size,
+      });
+      setMessages(current => current.map(message => {
+        const isReceiptForMine =
+          message.sender === 'me' &&
+          String(event.readerId) === String(contactId);
+        const isOwnIncomingRead =
+          message.sender === 'them' &&
+          String(event.readerId) === String(currentUserId);
+        if (!ids.has(String(message._id)) || (!isReceiptForMine && !isOwnIncomingRead)) {
+          return message;
+        }
+        return {
+          ...message,
+          read: true,
+          readAt: event.readAt || message.readAt,
+          deliveryStatus: 'read',
+          status: 'read',
+        };
+      }));
+      if (String(event.readerId) === String(currentUserId)) {
+        cancelChatNotifications(conversationId, [...ids]);
+      }
+    };
+
     const joinConversation = () => {
       console.info('[RUNTIME] socket', {
         stage: 'chat room join',
@@ -570,14 +672,16 @@ export default function PremiumChatScreen({
     socket.on('chat:message', onChatMessage);
     socket.on('chat:message-deleted', onChatMessageDeleted);
     socket.on('chat:message-updated', onChatMessageUpdated);
+    socket.on('chat:read', onChatRead);
     return () => {
       socket.emit('chat:leave', { conversationId });
       socket.off('connect', joinConversation);
       socket.off('chat:message', onChatMessage);
       socket.off('chat:message-deleted', onChatMessageDeleted);
       socket.off('chat:message-updated', onChatMessageUpdated);
+      socket.off('chat:read', onChatRead);
     };
-  }, [conversationId, currentUserId, syncWithServer, token]);
+  }, [contactId, conversationId, currentUserId, syncWithServer, token]);
 
   useEffect(() => {
     onErrorRef.current = onError;
@@ -730,14 +834,8 @@ export default function PremiumChatScreen({
   }, [cacheHydrated, conversationId, currentUserId, messages]);
 
   useEffect(() => {
-    const timers = statusTimers.current;
-
-    return () => {
-      timers.forEach(timer => {
-        clearTimeout(timer);
-      });
-    };
-  }, []);
+    markVisibleMessagesRead();
+  }, [markVisibleMessagesRead]);
   const rows = useMemo(
     () => buildRows(messages),
     [messages],
@@ -797,31 +895,6 @@ export default function PremiumChatScreen({
     ]);
   };
 
-  const scheduleStatus = messageId => {
-    const updateStatus = (
-      delay,
-      status,
-    ) => {
-      statusTimers.current.push(
-        setTimeout(() => {
-          setMessages(current =>
-            current.map(item =>
-              item._id === messageId
-                ? {
-                  ...item,
-                  status,
-                }
-                : item,
-            ),
-          );
-        }, delay),
-      );
-    };
-
-    updateStatus(900, 'delivered');
-    updateStatus(2400, 'read');
-  };
-
   const appendOutgoing = partial => {
     const message = {
       ...partial,
@@ -832,7 +905,6 @@ export default function PremiumChatScreen({
     };
 
     appendMessages([message]);
-    scheduleStatus(message._id);
 
     return message;
   };

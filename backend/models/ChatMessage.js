@@ -135,6 +135,14 @@ const ChatMessageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    readAt: {
+      type: Date,
+      default: null,
+    },
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
 
     deliveryStatus: {
       type: String,

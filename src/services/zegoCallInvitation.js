@@ -3,6 +3,7 @@ import ZegoUIKitPrebuiltCallService, { ZegoCallEndReason } from '@zegocloud/zego
 import * as ZIM from 'zego-zim-react-native';
 import { ZEGO_APP_ID, getZegoUserId, getZegoUserName, requestZegoToken } from './zegoService';
 import { getZegoCallUiConfig } from '../components/chat/ZegoCallUi';
+import { createSocket } from './socketService';
 
 let initializedUserId = null;
 let initializationPromise = null;
@@ -14,6 +15,9 @@ let zimConnectionState = null;
 let zimConnectionEvent = null;
 const callEventListeners = new Set();
 const ZIM_CONNECTION_LOG_ID = 'medi_runtime_zim_connection';
+const ZIM_INVITATION_LOG_ID = 'medi_runtime_invitation_events';
+let callRingingSocket = null;
+let callRingingHandler = null;
 
 function getSanitizedZegoError(error) {
   return {
@@ -202,10 +206,47 @@ export async function initializeZegoCallInvitations(authToken, user) {
           });
         });
       }
+      if (typeof signalingPlugin.onInvitationReceived === 'function') {
+        signalingPlugin.onInvitationReceived(ZIM_INVITATION_LOG_ID, data => {
+          const callID = data?.callID || data?.callId || data?.invitationID || '';
+          const inviterId = data?.inviter?.id || data?.inviter?.userID || data?.inviter || data?.fromUserID || '';
+          const callType = data?.type;
+          console.info('[ZEGOCLOUD][invitation]', {
+            stage: 'receiver invitation received',
+            callID,
+            inviterId,
+            callType,
+          });
+          notifyCallEvent('ringing', { callID, inviterId, callType });
+          if (inviterId) {
+            createSocket(authToken)?.emit('call:ringing', {
+              callerId: String(inviterId),
+              callID,
+              callType,
+            });
+          }
+        });
+      }
+      callRingingSocket = createSocket(authToken);
+      callRingingHandler = event => {
+        if (String(event?.callerId || '') !== String(userId)) return;
+        console.info('[ZEGOCLOUD][invitation]', {
+          stage: 'caller ringing confirmed',
+          callID: event?.callID,
+          calleeId: event?.calleeId,
+          callType: event?.callType,
+        });
+        notifyCallEvent('ringing', event);
+      };
+      callRingingSocket?.on('call:ringing', callRingingHandler);
       logInitializationStage('ZIM login start', { userId });
       await signalingPlugin.login(userId, getZegoUserName(user), initialToken.token);
       if (generation !== lifecycleGeneration) return;
       logInitializationStage('ZIM login success', { userId });
+      if (typeof signalingPlugin.enableNotifyWhenAppRunningInBackgroundOrQuit === 'function') {
+        signalingPlugin.enableNotifyWhenAppRunningInBackgroundOrQuit(undefined, false, 'Medi');
+        logInitializationStage('ZPNs background notify enabled', { userId });
+      }
 
       logInitializationStage('prebuilt init start', { userId });
       await ZegoUIKitPrebuiltCallService.init(
@@ -216,6 +257,11 @@ export async function initializeZegoCallInvitations(authToken, user) {
         [ZIM],
         {
           ...getZegoCallUiConfig(handleSdkCallEnd),
+          notifyWhenAppRunningInBackgroundOrQuit: true,
+          androidNotificationConfig: {
+            channelID: 'medi_incoming_calls',
+            channelName: 'Incoming calls',
+          },
           onOutgoingCallAccepted: (...details) => notifyCallEvent('accepted', details),
           onOutgoingCallDeclined: (...details) => notifyCallEvent('declined', details),
           onOutgoingCallRejectedCauseBusy: (...details) => notifyCallEvent('busy', details),
@@ -292,6 +338,14 @@ export function uninitializeZegoCallInvitations() {
   if (typeof signalingPlugin?.onConnectionStateChanged === 'function') {
     signalingPlugin.onConnectionStateChanged(ZIM_CONNECTION_LOG_ID);
   }
+  if (typeof signalingPlugin?.onInvitationReceived === 'function') {
+    signalingPlugin.onInvitationReceived(ZIM_INVITATION_LOG_ID);
+  }
+  if (callRingingSocket && callRingingHandler) {
+    callRingingSocket.off('call:ringing', callRingingHandler);
+  }
+  callRingingSocket = null;
+  callRingingHandler = null;
   if (prebuiltServiceInitialized) {
     ZegoUIKitPrebuiltCallService.uninit();
   } else if (signalingInitialized) {

@@ -3,8 +3,10 @@ import notifee, {
   AndroidNotificationSetting,
   AndroidStyle,
   AuthorizationStatus,
+  EventType,
   TriggerType,
 } from '@notifee/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const APP_NAME = 'Medi';
 const CHANNEL_ID = 'medi-task-reminders';
@@ -12,6 +14,20 @@ const CHAT_CHANNEL_ID = 'medi-chat-messages';
 const REMINDER_PREFIX = 'task-reminder-';
 const LEGACY_TIMER_PREFIX = 'task-timer-';
 const ADVANCE_MS = 2 * 60000;
+const PENDING_NOTIFICATION_PRESS_KEY = '@medi_pending_notification_press';
+
+if (typeof notifee.onBackgroundEvent === 'function') {
+  notifee.onBackgroundEvent(async ({ type, detail }) => {
+    if (type !== EventType.PRESS && type !== EventType.ACTION_PRESS) {
+      return;
+    }
+
+    const data = detail?.notification?.data || null;
+    if (data?.screen === 'chat') {
+      await AsyncStorage.setItem(PENDING_NOTIFICATION_PRESS_KEY, JSON.stringify(data));
+    }
+  });
+}
 
 function getReminderTimestamp(task) {
   if (!task?.reminderAt) return null;
@@ -48,7 +64,14 @@ export async function requestNotificationPermission() {
   );
 }
 
-export async function showChatNotification({ senderName, text, messageId, conversationId }) {
+export async function showChatNotification({
+  senderName,
+  text,
+  messageId,
+  conversationId,
+  senderId,
+  otherUserId,
+}) {
   if (!(await requestNotificationPermission())) return false;
 
   const channelId = await ensureChatChannel();
@@ -59,6 +82,7 @@ export async function showChatNotification({ senderName, text, messageId, conver
     data: {
       conversationId: String(conversationId || ''),
       messageId: String(messageId || ''),
+      senderId: String(senderId || otherUserId || ''),
       screen: 'chat',
     },
     android: {
@@ -78,6 +102,53 @@ export async function showChatNotification({ senderName, text, messageId, conver
     },
   });
   return true;
+}
+
+export async function cancelChatNotifications(conversationId, messageIds = []) {
+  try {
+    const ids = new Set((messageIds || []).filter(Boolean).map(id => `chat-message-${String(id)}`));
+    await Promise.all([...ids].map(id => notifee.cancelNotification(id)));
+
+    if (conversationId) {
+      const displayed = await notifee.getDisplayedNotifications();
+      const matchingIds = displayed
+        .filter(item => String(item?.notification?.data?.conversationId || '') === String(conversationId))
+        .map(item => item.notification.id)
+        .filter(Boolean);
+      await Promise.all(matchingIds.map(id => notifee.cancelNotification(id)));
+    }
+
+    console.info('[NOTIFICATION] cancelled because read', {
+      conversationId: String(conversationId || ''),
+      count: ids.size,
+    });
+  } catch (error) {
+    console.warn('Could not cancel chat notifications:', error);
+  }
+}
+
+export async function getInitialNotificationData() {
+  const initial = await notifee.getInitialNotification();
+  if (initial?.notification?.data) {
+    return initial.notification.data;
+  }
+
+  const pending = await AsyncStorage.getItem(PENDING_NOTIFICATION_PRESS_KEY);
+  if (!pending) return null;
+  await AsyncStorage.removeItem(PENDING_NOTIFICATION_PRESS_KEY);
+  try {
+    return JSON.parse(pending);
+  } catch {
+    return null;
+  }
+}
+
+export function onNotificationPress(listener) {
+  return notifee.onForegroundEvent(({ type, detail }) => {
+    if (type === EventType.PRESS || type === EventType.ACTION_PRESS) {
+      listener(detail?.notification?.data || null);
+    }
+  });
 }
 
 async function createTaskReminder(task, channelId) {

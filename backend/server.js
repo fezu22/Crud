@@ -33,6 +33,7 @@ logZegoConfigAtStartup();
 
 const app = express();
 const httpServer = http.createServer(app);
+app.set('trust proxy', 1);
 
 const io = new Server(httpServer, {
   cors: {
@@ -152,6 +153,19 @@ io.on('connection', socket => {
   socket.on('chat:leave', payload => {
     const conversationId = String(payload?.conversationId || '');
     socket.leave(`conversation:${conversationId}`);
+  });
+
+  socket.on('call:ringing', payload => {
+    const callerId = String(payload?.callerId || '');
+    const callID = String(payload?.callID || payload?.callId || '');
+    if (!callerId || callerId === userId) return;
+    io.to(`user:${callerId}`).emit('call:ringing', {
+      callerId,
+      calleeId: userId,
+      callID,
+      callType: payload?.callType,
+      receivedAt: new Date().toISOString(),
+    });
   });
 
   socket.on('disconnect', () => {

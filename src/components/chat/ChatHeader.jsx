@@ -214,22 +214,34 @@ export default function ChatHeader({
           </Text>
         </PressableScale>
 
-        <View
-          style={[
-            styles.avatar,
-            {
-              backgroundColor: theme.separatorBg,
-              borderColor: theme.primary,
-            },
-          ]}>
-          <Text
+        {contact?.profileImageUrl ? (
+          <Image
+            source={{ uri: contact.profileImageUrl }}
             style={[
-              styles.avatarText,
-              { color: theme.primaryLight },
+              styles.avatar,
+              {
+                borderColor: theme.primary,
+              },
+            ]}
+          />
+        ) : (
+          <View
+            style={[
+              styles.avatar,
+              {
+                backgroundColor: theme.separatorBg,
+                borderColor: theme.primary,
+              },
             ]}>
-            {initialsOf(contact?.name)}
-          </Text>
-        </View>
+            <Text
+              style={[
+                styles.avatarText,
+                { color: theme.primaryLight },
+              ]}>
+              {initialsOf(contact?.name)}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.identity}>
           <Text

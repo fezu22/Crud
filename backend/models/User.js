@@ -39,6 +39,8 @@ const UserSchema = new mongoose.Schema(
       default: 'email',
     },
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    profileImageUrl: { type: String, trim: true, default: '' },
+    profileImageFileId: { type: mongoose.Schema.Types.ObjectId, default: null },
     // Set only after a successful authenticated sign-in (or account creation),
     // not on ordinary API activity. This is the retention-policy timestamp.
     lastLoginAt: { type: Date, default: null },

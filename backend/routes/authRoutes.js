@@ -1,10 +1,16 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
+const multer = require('multer');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
 router.get('/ping', auth, (req, res) => res.json({ ok: true }));
 
 const generateToken = userId => {
@@ -22,6 +28,7 @@ const formatUser = user => ({
   authProvider: user.authProvider,
   role: user.role || 'user',
   encryptionSalt: user.encryptionSalt,
+  profileImageUrl: user.profileImageUrl || '',
 
   // Cloudinary connection status
   cloudinaryConnected: Boolean(user.cloudinaryConnected),
@@ -31,6 +38,16 @@ const formatUser = user => ({
   cloudinaryConnectedAt:
     user.cloudinaryConnectedAt || null,
 });
+
+function getProfileImagesBucket() {
+  return new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+    bucketName: 'profileImages',
+  });
+}
+
+function buildProfileImageUrl(req, fileId) {
+  return `${req.protocol}://${req.get('host')}/api/auth/profile-images/${fileId}`;
+}
 
 // ================= EMAIL AUTH =================
 
@@ -332,6 +349,71 @@ router.get('/me', auth, async (req, res) => {
         err.message ||
         'Server error fetching user profile',
     });
+  }
+});
+
+router.get('/profile-images/:fileId', async (req, res, next) => {
+  try {
+    const { fileId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(fileId)) {
+      return res.status(404).json({ message: 'Profile image not found' });
+    }
+
+    const _id = new mongoose.Types.ObjectId(fileId);
+    const bucket = getProfileImagesBucket();
+    const file = await bucket.find({ _id }).next();
+    if (!file) {
+      return res.status(404).json({ message: 'Profile image not found' });
+    }
+
+    if (file.contentType) res.set('Content-Type', file.contentType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    return bucket.openDownloadStream(_id).on('error', next).pipe(res);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+router.post('/profile-image', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file?.buffer?.length || !String(req.file.mimetype || '').startsWith('image/')) {
+      return res.status(400).json({ message: 'A profile image file is required.' });
+    }
+
+    const bucket = getProfileImagesBucket();
+    const uploadStream = bucket.openUploadStream(req.file.originalname || `profile-${req.user._id}.jpg`, {
+      contentType: req.file.mimetype || 'image/jpeg',
+      metadata: { userId: req.user._id },
+    });
+
+    await new Promise((resolve, reject) => {
+      uploadStream.on('finish', resolve);
+      uploadStream.on('error', reject);
+      uploadStream.end(req.file.buffer);
+    });
+
+    const previousFileId = req.user.profileImageFileId;
+    const profileImageUrl = buildProfileImageUrl(req, uploadStream.id);
+    req.user.profileImageUrl = profileImageUrl;
+    req.user.profileImageFileId = uploadStream.id;
+    await req.user.save();
+    if (previousFileId) {
+      bucket.delete(previousFileId).catch(() => {});
+    }
+
+    const io = req.app.get('io');
+    const event = {
+      userId: String(req.user._id),
+      profileImageUrl: req.user.profileImageUrl || '',
+      user: formatUser(req.user),
+    };
+    io?.to(`user:${String(req.user._id)}`).emit('profile:image-updated', event);
+    io?.emit('user:profile-updated', event);
+
+    res.json({ user: formatUser(req.user) });
+  } catch (err) {
+    console.error('Error updating profile image:', err);
+    res.status(500).json({ message: err.message || 'Could not update profile image' });
   }
 });
 

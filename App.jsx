@@ -45,6 +45,9 @@ import useTasks from './src/hooks/useTasks';
 import { appThemes } from './src/theme/appTheme';
 import {
   cancelTaskReminders,
+  cancelChatNotifications,
+  getInitialNotificationData,
+  onNotificationPress,
   requestNotificationPermission,
   showChatNotification,
   syncTaskReminders,
@@ -58,6 +61,7 @@ import {
   getTasks,
   loginUser,
   registerUser,
+  uploadProfileImage,
   uploadLibraryMedia,
   uploadMedia,
   saveCloudinaryConnection,
@@ -80,6 +84,7 @@ import {
 } from './src/services/zegoCallInvitation';
 import { setZegoCallThemeMode } from './src/components/chat/ZegoCallUi';
 import { API_BASE_URL } from './src/config/apiConfig';
+import { getActiveChat } from './src/services/activeChat';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -249,6 +254,7 @@ function AppContent() {
   });
   const [zegoStatus, setZegoStatus] = useState('idle');
   const [zegoRetry, setZegoRetry] = useState(0);
+  const [pendingChatUserId, setPendingChatUserId] = useState(null);
   const profileUserId = getUserStorageId(user);
   const zegoUserId = user?._id || user?.id;
   const zegoUserRef = useRef(user);
@@ -305,11 +311,16 @@ function AppContent() {
       setProfileImage(null);
       return undefined;
     }
+    if (user?.profileImageUrl) {
+      setProfileImage(user.profileImageUrl);
+      saveProfileImage(profileUserId, user.profileImageUrl).catch(() => {});
+      return () => { active = false; };
+    }
     loadProfileImage(profileUserId)
       .then(uri => { if (active) setProfileImage(uri); })
       .catch(() => { if (active) setProfileImage(null); });
     return () => { active = false; };
-  }, [profileUserId]);
+  }, [profileUserId, user?.profileImageUrl]);
   useEffect(() => {
     if (!token) return undefined;
     const id = setInterval(() => pingActive(token).catch(() => {}), 25000);
@@ -438,12 +449,25 @@ function AppContent() {
     const handleChatMessage = message => {
       const senderId = message?.sender?._id || message?.sender?.id || message?.sender;
       if (String(senderId) === String(getUserStorageId(user))) return;
+      const activeChat = getActiveChat();
+      if (
+        activeChat.conversationId &&
+        String(activeChat.conversationId) === String(message?.conversationId)
+      ) {
+        console.info('[NOTIFICATION] suppressed because chat visible', {
+          conversationId: message?.conversationId,
+          messageId: message?._id,
+        });
+        cancelChatNotifications(message?.conversationId, message?._id ? [message._id] : []);
+        return;
+      }
 
       showChatNotification({
         senderName: message?.fromName || message?.senderName || 'New message',
         text: message?.text || message?.caption || (message?.type === 'voice' ? 'Sent a voice message' : ''),
         messageId: message?._id,
         conversationId: message?.conversationId,
+        senderId,
       }).catch(error => console.warn('Could not show chat notification:', error));
     };
 
@@ -452,6 +476,48 @@ function AppContent() {
       socket.off('chat:message', handleChatMessage);
     };
   }, [preferences.notifications, preferences.ready, token, user]);
+  useEffect(() => {
+    if (!token || !user) return undefined;
+
+    const openChatFromNotification = data => {
+      if (!data || data.screen !== 'chat') return;
+      const senderId = data.senderId || data.otherUserId;
+      if (!senderId) return;
+      console.info('[NOTIFICATION] tapped chat', {
+        conversationId: data.conversationId,
+        senderId,
+      });
+      setPendingChatUserId(String(senderId));
+      setActiveTab('chat');
+      cancelChatNotifications(data.conversationId, data.messageId ? [data.messageId] : []);
+    };
+
+    const unsubscribe = onNotificationPress(openChatFromNotification);
+    getInitialNotificationData()
+      .then(openChatFromNotification)
+      .catch(error => console.warn('Could not read initial notification:', error));
+    return unsubscribe;
+  }, [token, user]);
+  useEffect(() => {
+    if (!token || !user) return undefined;
+    const socket = createSocket(token);
+    const handleProfileUpdated = event => {
+      const eventUserId = String(event?.userId || event?.user?._id || event?.user?.id || '');
+      if (!eventUserId) return;
+      if (eventUserId === String(getUserStorageId(user))) {
+        const nextUser = event.user || { ...user, profileImageUrl: event.profileImageUrl || '' };
+        setUser(nextUser);
+        setProfileImage(nextUser.profileImageUrl || null);
+        saveSession(token, nextUser).catch(() => {});
+      }
+    };
+    socket.on('profile:image-updated', handleProfileUpdated);
+    socket.on('user:profile-updated', handleProfileUpdated);
+    return () => {
+      socket.off('profile:image-updated', handleProfileUpdated);
+      socket.off('user:profile-updated', handleProfileUpdated);
+    };
+  }, [token, user]);
   useEffect(() => () => {
     if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
   }, []);
@@ -645,11 +711,23 @@ function AppContent() {
       },
     });
   }
-  async function editProfileImage(uri) {
+  async function editProfileImage(asset) {
     const userId = getUserStorageId(user);
+    const uri = asset?.uri || asset;
     if (!userId || !uri) return;
     await saveProfileImage(userId, uri);
     setProfileImage(uri);
+    if (token) {
+      const data = await uploadProfileImage(
+        typeof asset === 'string' ? { uri } : asset,
+        token,
+      );
+      if (data?.user) {
+        setUser(data.user);
+        setProfileImage(data.user.profileImageUrl || uri);
+        await saveSession(token, data.user);
+      }
+    }
   }
   function removeMedia(item) {
     const ids = item.mediaIds?.length ? item.mediaIds : [item._id];
@@ -830,6 +908,8 @@ function AppContent() {
               onRetryZego={() => setZegoRetry(value => value + 1)}
               onError={error => showError('Chat error', error)}
               onExitChat={() => setActiveTab('home')}
+              openChatUserId={pendingChatUserId}
+              onOpenChatHandled={() => setPendingChatUserId(null)}
             />
           ) : activeTab === 'projects' ? (
             <ProjectsScreen

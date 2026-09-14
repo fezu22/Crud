@@ -63,9 +63,9 @@ export default function ProfileScreen({
       });
       if (result.didCancel) return;
       if (result.errorMessage) throw new Error(result.errorMessage);
-      const uri = result.assets?.[0]?.uri;
-      if (!uri) throw new Error('Please choose a profile photo.');
-      await onEditProfileImage?.(uri);
+      const asset = result.assets?.[0];
+      if (!asset?.uri) throw new Error('Please choose a profile photo.');
+      await onEditProfileImage?.(asset);
     } catch (error) {
       onError?.(error);
     } finally {
