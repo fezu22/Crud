@@ -1,5 +1,5 @@
 import ZegoUIKit from '@zegocloud/zego-uikit-rn';
-import ZegoUIKitPrebuiltCallService from '@zegocloud/zego-uikit-prebuilt-call-rn';
+import ZegoUIKitPrebuiltCallService, { ZegoCallEndReason } from '@zegocloud/zego-uikit-prebuilt-call-rn';
 import * as ZIM from 'zego-zim-react-native';
 import { ZEGO_APP_ID, getZegoUserId, getZegoUserName, requestZegoToken } from './zegoService';
 import { getZegoCallUiConfig } from '../components/chat/ZegoCallUi';
@@ -10,7 +10,10 @@ let initializingUserId = null;
 let lifecycleGeneration = 0;
 let signalingInitialized = false;
 let prebuiltServiceInitialized = false;
+let zimConnectionState = null;
+let zimConnectionEvent = null;
 const callEventListeners = new Set();
+const ZIM_CONNECTION_LOG_ID = 'medi_runtime_zim_connection';
 
 function getSanitizedZegoError(error) {
   return {
@@ -41,13 +44,55 @@ function logInitializationStage(stage, details = {}) {
   });
 }
 
+function logHangup(stage, details = {}) {
+  console.info('[ZEGOCLOUD][hangup]', {
+    stage,
+    callID: details.callID,
+    reason: details.reason,
+    duration: details.duration,
+  });
+}
+
+function getCallEndEvent(reason) {
+  if (reason === ZegoCallEndReason.remoteHangUp) return 'remoteHangUp';
+  if (reason === ZegoCallEndReason.kickOut) return 'kickOut';
+  return 'localHangUp';
+}
+
 function notifyCallEvent(type, details) {
   callEventListeners.forEach(listener => listener(type, details));
+}
+
+function logRuntimeZim(stage, details = {}) {
+  console.info('[RUNTIME] ZIM connection state', {
+    stage,
+    ...details,
+  });
+}
+
+function getActiveCallState() {
+  let inRoom = false;
+  try {
+    inRoom = Boolean(ZegoUIKit.inRoom?.());
+  } catch {
+    inRoom = false;
+  }
+  return {
+    inRoom,
+    initializedUserId,
+    initializingUserId,
+    zimConnectionState,
+    zimConnectionEvent,
+  };
 }
 
 export function subscribeToZegoCallEvents(listener) {
   callEventListeners.add(listener);
   return () => callEventListeners.delete(listener);
+}
+
+export function getZegoRuntimeState() {
+  return getActiveCallState();
 }
 
 export async function initializeZegoCallInvitations(authToken, user) {
@@ -112,6 +157,26 @@ export async function initializeZegoCallInvitations(authToken, user) {
     ZegoUIKit.onTokenProvide(provideFreshToken);
 
     try {
+      const handleSdkCallEnd = (callID, reason, duration) => {
+        const details = {
+          callID,
+          reason,
+          duration,
+          endEvent: getCallEndEvent(reason),
+        };
+
+        if (reason === ZegoCallEndReason.localHangUp) {
+          logHangup('local hangup requested', details);
+        }
+
+        if (reason === ZegoCallEndReason.remoteHangUp) {
+          logHangup('remote hangup received', details);
+        }
+
+        logHangup('onCallEnd', details);
+        notifyCallEvent('ended', details);
+      };
+
       // This Prebuilt Call version calls ZIM.login(userID, userName) without a
       // token. Log ZIM in with the server-issued token first; the following
       // Prebuilt init observes that completed login and installs its call hooks.
@@ -126,6 +191,17 @@ export async function initializeZegoCallInvitations(authToken, user) {
       }
       signalingPlugin.init(ZEGO_APP_ID, '');
       signalingInitialized = true;
+      if (typeof signalingPlugin.onConnectionStateChanged === 'function') {
+        signalingPlugin.onConnectionStateChanged(ZIM_CONNECTION_LOG_ID, data => {
+          zimConnectionState = data?.state;
+          zimConnectionEvent = data?.event;
+          logRuntimeZim('changed', {
+            state: zimConnectionState,
+            event: zimConnectionEvent,
+            userId,
+          });
+        });
+      }
       logInitializationStage('ZIM login start', { userId });
       await signalingPlugin.login(userId, getZegoUserName(user), initialToken.token);
       if (generation !== lifecycleGeneration) return;
@@ -139,7 +215,7 @@ export async function initializeZegoCallInvitations(authToken, user) {
         getZegoUserName(user),
         [ZIM],
         {
-          ...getZegoCallUiConfig((...details) => notifyCallEvent('ended', details)),
+          ...getZegoCallUiConfig(handleSdkCallEnd),
           onOutgoingCallAccepted: (...details) => notifyCallEvent('accepted', details),
           onOutgoingCallDeclined: (...details) => notifyCallEvent('declined', details),
           onOutgoingCallRejectedCauseBusy: (...details) => notifyCallEvent('busy', details),
@@ -183,14 +259,44 @@ export async function initializeZegoCallInvitations(authToken, user) {
   }
 }
 
+export async function ensureZegoCallInvitations(authToken, user) {
+  const userId = getZegoUserId(user);
+  const state = getActiveCallState();
+  console.info('[RUNTIME] foreground restore', {
+    stage: 'zego ensure requested',
+    userId,
+    activeCallState: state,
+  });
+
+  if (state.inRoom) {
+    return;
+  }
+
+  if (
+    initializedUserId === userId &&
+    (zimConnectionState === null || zimConnectionState === 2 || zimConnectionState === 3)
+  ) {
+    return;
+  }
+
+  if (initializedUserId === userId) {
+    uninitializeZegoCallInvitations();
+  }
+
+  await initializeZegoCallInvitations(authToken, user);
+}
+
 export function uninitializeZegoCallInvitations() {
   lifecycleGeneration += 1;
+  const signalingPlugin = ZegoUIKit.getSignalingPlugin();
+  if (typeof signalingPlugin?.onConnectionStateChanged === 'function') {
+    signalingPlugin.onConnectionStateChanged(ZIM_CONNECTION_LOG_ID);
+  }
   if (prebuiltServiceInitialized) {
     ZegoUIKitPrebuiltCallService.uninit();
   } else if (signalingInitialized) {
     // Prebuilt init did not complete, so it cannot tear down the direct,
     // token-authenticated ZIM login started above.
-    const signalingPlugin = ZegoUIKit.getSignalingPlugin();
     if (typeof signalingPlugin?.logout === 'function') {
       signalingPlugin.logout()?.catch?.(() => {});
     }
@@ -202,6 +308,8 @@ export function uninitializeZegoCallInvitations() {
   initializedUserId = null;
   signalingInitialized = false;
   prebuiltServiceInitialized = false;
+  zimConnectionState = null;
+  zimConnectionEvent = null;
   initializationPromise = null;
   initializingUserId = null;
 }

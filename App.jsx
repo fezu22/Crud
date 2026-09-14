@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import './global.css';
 import {
   Animated,
+  AppState,
   Keyboard,
   LayoutAnimation,
   Platform,
@@ -70,8 +71,10 @@ import {
   saveSession,
 } from './src/storage/sessionStorage';
 import { clearSessionKey, deriveSessionKey } from './src/services/privateCrypto';
-import { createSocket, disconnectSocket } from './src/services/socketService';
+import { createSocket, disconnectSocket, reconnectSocket } from './src/services/socketService';
 import {
+  ensureZegoCallInvitations,
+  getZegoRuntimeState,
   initializeZegoCallInvitations,
   uninitializeZegoCallInvitations,
 } from './src/services/zegoCallInvitation';
@@ -94,6 +97,10 @@ const emptyConfirm = {
 
 function getUserStorageId(currentUser) {
   return currentUser?.id || currentUser?._id || currentUser?.email || currentUser?.phoneNumber;
+}
+
+function isAuthFailure(error) {
+  return error?.status === 401 || error?.status === 403;
 }
 
 const styles = StyleSheet.create({
@@ -250,6 +257,7 @@ function AppContent() {
   const authGenerationRef = useRef(0);
   const authBusyRef = useRef(false);
   const notificationPromptUserRef = useRef(null);
+  const foregroundRestoreRef = useRef(false);
   const {
     tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
     formProject, savingTask, resetTasks, openTaskForm, closeTaskForm, saveTask,
@@ -289,6 +297,7 @@ function AppContent() {
     return host;
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { restoreSession(); }, []);
   useEffect(() => {
     let active = true;
@@ -310,6 +319,51 @@ function AppContent() {
     if (!token) return undefined;
     createSocket(token);
     return () => disconnectSocket();
+  }, [token]);
+  useEffect(() => {
+    const restoreRuntime = async () => {
+      if (!token) return;
+      if (foregroundRestoreRef.current) return;
+      foregroundRestoreRef.current = true;
+      console.info('[RUNTIME] foreground restore', {
+        stage: 'start',
+        apiBaseUrl: API_BASE_URL,
+        hasUser: Boolean(zegoUserRef.current),
+        activeCallState: getZegoRuntimeState(),
+      });
+      try {
+        reconnectSocket(token);
+        pingActive(token).catch(() => {});
+        if (zegoUserRef.current?._id || zegoUserRef.current?.id) {
+          await ensureZegoCallInvitations(token, zegoUserRef.current);
+          setZegoStatus('ready');
+        }
+        console.info('[RUNTIME] foreground restore', {
+          stage: 'complete',
+          activeCallState: getZegoRuntimeState(),
+        });
+      } catch (error) {
+        console.warn('[RUNTIME] foreground restore', {
+          stage: 'failed',
+          message: String(error?.message || 'Runtime restore failed.').slice(0, 180),
+        });
+        setZegoStatus('error');
+      } finally {
+        foregroundRestoreRef.current = false;
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', state => {
+      console.info('[RUNTIME] AppState', {
+        state,
+        activeCallState: getZegoRuntimeState(),
+      });
+      if (state === 'active') {
+        restoreRuntime();
+      }
+    });
+
+    return () => subscription.remove();
   }, [token]);
   useEffect(() => {
     if (!token || !zegoUserId) {
@@ -422,7 +476,31 @@ function AppContent() {
         return;
       }
 
-      const fresh = await getCurrentUser(session.token);
+      if (session.user) {
+        setToken(session.token);
+        setUser(session.user);
+        setBootLoading(false);
+      }
+
+      let fresh;
+
+      try {
+        fresh = await getCurrentUser(session.token);
+      } catch (error) {
+        if (isAuthFailure(error)) {
+          authGenerationRef.current += 1;
+          setToken(null);
+          setUser(null);
+          setBootLoading(false);
+          clearSessionKey();
+          resetWorkspace();
+          await clearSession();
+          console.warn('Stored session expired; user signed out.');
+        } else {
+          console.warn('Could not refresh stored session; keeping cached login:', error);
+        }
+        return;
+      }
 
       if (authGenerationRef.current !== restoreGeneration) {
         return;

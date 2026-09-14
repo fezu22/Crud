@@ -39,6 +39,8 @@ const io = new Server(httpServer, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
+  pingInterval: 25000,
+  pingTimeout: 60000,
 });
 
 app.set('io', io);
@@ -120,9 +122,16 @@ io.use(async (socket, next) => {
   Real-time call signaling events
 */
 const activeSockets = new Map();
+const offlineTimers = new Map();
+const PRESENCE_OFFLINE_GRACE_MS = 10000;
 
 io.on('connection', socket => {
   const userId = String(socket.user._id);
+  const pendingOfflineTimer = offlineTimers.get(userId);
+  if (pendingOfflineTimer) {
+    clearTimeout(pendingOfflineTimer);
+    offlineTimers.delete(userId);
+  }
 
   activeSockets.set(userId, (activeSockets.get(userId) || 0) + 1);
   User.updateOne({ _id: socket.user._id }, { lastActiveAt: new Date() }).catch(() => {});
@@ -151,9 +160,14 @@ io.on('connection', socket => {
       activeSockets.set(userId, remaining);
     } else {
       activeSockets.delete(userId);
-      const lastActiveAt = new Date();
-      User.updateOne({ _id: socket.user._id }, { lastActiveAt }).catch(() => {});
-      io.emit('presence:update', { userId, online: false, lastSeenAt: lastActiveAt.toISOString() });
+      const timer = setTimeout(() => {
+        if (activeSockets.has(userId)) return;
+        offlineTimers.delete(userId);
+        const lastActiveAt = new Date();
+        User.updateOne({ _id: socket.user._id }, { lastActiveAt }).catch(() => {});
+        io.emit('presence:update', { userId, online: false, lastSeenAt: lastActiveAt.toISOString() });
+      }, PRESENCE_OFFLINE_GRACE_MS);
+      offlineTimers.set(userId, timer);
     }
     console.log(`Call socket disconnected: ${socket.user.email || userId}`);
   });

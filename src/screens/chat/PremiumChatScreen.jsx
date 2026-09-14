@@ -72,7 +72,7 @@ import {
 import { FadeSlideIn } from '../../components/motion';
 import { getChatTheme } from '../../theme/chatTheme';
 import { getZegoUserId, getZegoUserName } from '../../services/zegoService';
-import { subscribeToZegoCallEvents } from '../../services/zegoCallInvitation';
+import { getZegoRuntimeState, subscribeToZegoCallEvents } from '../../services/zegoCallInvitation';
 import { returnToMediApp } from '../../components/chat/ZegoCallInvitationHost';
 import {
   loadCachedMessages,
@@ -374,6 +374,13 @@ export default function PremiumChatScreen({
     // terminal callbacks cannot navigate or save the same call twice.
     activeCallRef.current = null;
     setOutgoingCall(null);
+    console.info('[RUNTIME] active call state', {
+      stage: 'finalized',
+      status,
+      callSessionId: call.callSessionId,
+      durationSeconds,
+      zegoRuntime: getZegoRuntimeState(),
+    });
     returnToMediApp();
 
     saveCallEvent(callEvent, token)
@@ -416,6 +423,12 @@ export default function PremiumChatScreen({
       answeredAt: null,
       finalized: false,
     };
+    console.info('[RUNTIME] active call state', {
+      stage: 'outgoing start',
+      callType: type,
+      recipientId: contactId,
+      zegoRuntime: getZegoRuntimeState(),
+    });
     const invitees = [{
       userID: getZegoUserId(contact),
       userName: getZegoUserName(contact),
@@ -449,11 +462,25 @@ export default function PremiumChatScreen({
     setOutgoingCall(null);
   }), [navigation]);
 
-  useEffect(() => subscribeToZegoCallEvents(event => {
+  useEffect(() => subscribeToZegoCallEvents((event, details) => {
     const call = activeCallRef.current;
     if (event === 'accepted' && call && !call.answeredAt) call.answeredAt = new Date();
     const statusByEvent = { declined: 'declined', busy: 'declined', timeout: 'missed', canceled: 'cancelled', ended: 'ended' };
-    if (statusByEvent[event]) finalizeActiveCall(statusByEvent[event]);
+    if (statusByEvent[event]) {
+      const finalized = finalizeActiveCall(statusByEvent[event]);
+      if (event === 'ended' && !finalized) {
+        const hangupStage = details?.endEvent === 'remoteHangUp'
+          ? 'remote hangup received'
+          : 'onCallEnd';
+        console.info('[ZEGOCLOUD][hangup]', {
+          stage: hangupStage,
+          callID: details?.callID,
+          reason: details?.reason,
+          duration: details?.duration,
+        });
+        returnToMediApp();
+      }
+    }
     setOutgoingCall(null);
     const callMessages = {
       declined: 'Call declined.',
@@ -530,12 +557,22 @@ export default function PremiumChatScreen({
       )));
     };
 
-    socket.emit('chat:join', { conversationId });
+    const joinConversation = () => {
+      console.info('[RUNTIME] socket', {
+        stage: 'chat room join',
+        conversationId,
+      });
+      socket.emit('chat:join', { conversationId });
+    };
+
+    joinConversation();
+    socket.on('connect', joinConversation);
     socket.on('chat:message', onChatMessage);
     socket.on('chat:message-deleted', onChatMessageDeleted);
     socket.on('chat:message-updated', onChatMessageUpdated);
     return () => {
       socket.emit('chat:leave', { conversationId });
+      socket.off('connect', joinConversation);
       socket.off('chat:message', onChatMessage);
       socket.off('chat:message-deleted', onChatMessageDeleted);
       socket.off('chat:message-updated', onChatMessageUpdated);

@@ -23,6 +23,7 @@ jest.mock('@zegocloud/zego-uikit-rn', () => ({
 jest.mock('@zegocloud/zego-uikit-prebuilt-call-rn', () => ({
   __esModule: true,
   default: { init: mockInit, uninit: mockUninit },
+  ZegoCallEndReason: { localHangUp: 0, remoteHangUp: 1, kickOut: 2 },
 }));
 
 jest.mock('zego-zim-react-native', () => ({
