@@ -264,6 +264,8 @@ function AppContent() {
   const authBusyRef = useRef(false);
   const notificationPromptUserRef = useRef(null);
   const foregroundRestoreRef = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
+  const handledNotificationPressRef = useRef(new Set());
   const {
     tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
     formProject, savingTask, resetTasks, openTaskForm, closeTaskForm, saveTask,
@@ -346,7 +348,9 @@ function AppContent() {
         reconnectSocket(token);
         pingActive(token).catch(() => {});
         if (zegoUserRef.current?._id || zegoUserRef.current?.id) {
-          await ensureZegoCallInvitations(token, zegoUserRef.current);
+          await ensureZegoCallInvitations(token, zegoUserRef.current, {
+            notifyInBackground: preferences.notifications,
+          });
           setZegoStatus('ready');
         }
         console.info('[RUNTIME] foreground restore', {
@@ -365,6 +369,7 @@ function AppContent() {
     };
 
     const subscription = AppState.addEventListener('change', state => {
+      appStateRef.current = state;
       console.info('[RUNTIME] AppState', {
         state,
         activeCallState: getZegoRuntimeState(),
@@ -375,7 +380,7 @@ function AppContent() {
     });
 
     return () => subscription.remove();
-  }, [token]);
+  }, [preferences.notifications, token]);
   useEffect(() => {
     if (!token || !zegoUserId) {
       console.info('[ZEGOCLOUD][release-check]', {
@@ -396,7 +401,9 @@ function AppContent() {
       apiBaseUrl: API_BASE_URL,
       userId: String(zegoUserId).slice(0, 80),
     });
-    initializeZegoCallInvitations(token, zegoUserRef.current)
+    initializeZegoCallInvitations(token, zegoUserRef.current, {
+      notifyInBackground: preferences.notifications,
+    })
       .then(() => {
         if (active) {
           setZegoStatus('ready');
@@ -431,7 +438,7 @@ function AppContent() {
       active = false;
       uninitializeZegoCallInvitations();
     };
-  }, [token, zegoRetry, zegoUserId]);
+  }, [preferences.notifications, token, zegoRetry, zegoUserId]);
   useEffect(() => {
     if (!token || !user || !preferences.ready || !preferences.notifications) {
       return undefined;
@@ -449,6 +456,15 @@ function AppContent() {
     const handleChatMessage = message => {
       const senderId = message?.sender?._id || message?.sender?.id || message?.sender;
       if (String(senderId) === String(getUserStorageId(user))) return;
+      const currentAppState = appStateRef.current || AppState.currentState;
+      if (currentAppState === 'active') {
+        console.info('[NOTIFICATION] suppressed because app foreground', {
+          conversationId: message?.conversationId,
+          messageId: message?._id,
+        });
+        return;
+      }
+
       const activeChat = getActiveChat();
       if (
         activeChat.conversationId &&
@@ -468,6 +484,9 @@ function AppContent() {
         messageId: message?._id,
         conversationId: message?.conversationId,
         senderId,
+        otherUserId: senderId,
+        senderProfileImageUrl: message?.senderProfileImageUrl || message?.sender?.profileImageUrl || '',
+        appState: currentAppState,
       }).catch(error => console.warn('Could not show chat notification:', error));
     };
 
@@ -483,6 +502,14 @@ function AppContent() {
       if (!data || data.screen !== 'chat') return;
       const senderId = data.senderId || data.otherUserId;
       if (!senderId) return;
+      const pressKey = `${data.messageId || ''}:${data.conversationId || ''}:${senderId}`;
+      if (handledNotificationPressRef.current.has(pressKey)) {
+        return;
+      }
+      handledNotificationPressRef.current.add(pressKey);
+      if (handledNotificationPressRef.current.size > 40) {
+        handledNotificationPressRef.current = new Set([...handledNotificationPressRef.current].slice(-20));
+      }
       console.info('[NOTIFICATION] tapped chat', {
         conversationId: data.conversationId,
         senderId,

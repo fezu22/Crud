@@ -99,7 +99,8 @@ export function getZegoRuntimeState() {
   return getActiveCallState();
 }
 
-export async function initializeZegoCallInvitations(authToken, user) {
+export async function initializeZegoCallInvitations(authToken, user, options = {}) {
+  const notifyInBackground = options.notifyInBackground !== false;
   const userId = getZegoUserId(user);
   if (!authToken || !userId) {
     throw new Error('A signed-in user is required before calling can initialize.');
@@ -243,7 +244,10 @@ export async function initializeZegoCallInvitations(authToken, user) {
       await signalingPlugin.login(userId, getZegoUserName(user), initialToken.token);
       if (generation !== lifecycleGeneration) return;
       logInitializationStage('ZIM login success', { userId });
-      if (typeof signalingPlugin.enableNotifyWhenAppRunningInBackgroundOrQuit === 'function') {
+      if (
+        notifyInBackground &&
+        typeof signalingPlugin.enableNotifyWhenAppRunningInBackgroundOrQuit === 'function'
+      ) {
         signalingPlugin.enableNotifyWhenAppRunningInBackgroundOrQuit(undefined, false, 'Medi');
         logInitializationStage('ZPNs background notify enabled', { userId });
       }
@@ -257,7 +261,7 @@ export async function initializeZegoCallInvitations(authToken, user) {
         [ZIM],
         {
           ...getZegoCallUiConfig(handleSdkCallEnd),
-          notifyWhenAppRunningInBackgroundOrQuit: true,
+          notifyWhenAppRunningInBackgroundOrQuit: notifyInBackground,
           androidNotificationConfig: {
             channelID: 'medi_incoming_calls',
             channelName: 'Incoming calls',
@@ -305,7 +309,7 @@ export async function initializeZegoCallInvitations(authToken, user) {
   }
 }
 
-export async function ensureZegoCallInvitations(authToken, user) {
+export async function ensureZegoCallInvitations(authToken, user, options = {}) {
   const userId = getZegoUserId(user);
   const state = getActiveCallState();
   console.info('[RUNTIME] foreground restore', {
@@ -329,7 +333,7 @@ export async function ensureZegoCallInvitations(authToken, user) {
     uninitializeZegoCallInvitations();
   }
 
-  await initializeZegoCallInvitations(authToken, user);
+  await initializeZegoCallInvitations(authToken, user, options);
 }
 
 export function uninitializeZegoCallInvitations() {

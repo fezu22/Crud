@@ -7,6 +7,8 @@ import notifee, {
   TriggerType,
 } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { sendChatMessage } from './api';
+import { loadSession } from '../storage/sessionStorage';
 
 const APP_NAME = 'Medi';
 const CHANNEL_ID = 'medi-task-reminders';
@@ -15,6 +17,44 @@ const REMINDER_PREFIX = 'task-reminder-';
 const LEGACY_TIMER_PREFIX = 'task-timer-';
 const ADVANCE_MS = 2 * 60000;
 const PENDING_NOTIFICATION_PRESS_KEY = '@medi_pending_notification_press';
+const CHAT_REPLY_ACTION_ID = 'reply';
+
+function getChatNotificationData(data = {}) {
+  return {
+    conversationId: String(data.conversationId || ''),
+    messageId: String(data.messageId || ''),
+    senderId: String(data.senderId || data.otherUserId || ''),
+    otherUserId: String(data.otherUserId || data.senderId || ''),
+    screen: 'chat',
+  };
+}
+
+async function sendQuickReplyFromNotification(detail) {
+  const data = getChatNotificationData(detail?.notification?.data || {});
+  const replyText = String(detail?.input || '').trim();
+
+  if (!replyText || !data.senderId) {
+    return false;
+  }
+
+  const session = await loadSession();
+  if (!session.token) {
+    console.warn('[NOTIFICATION] quick reply failed', {
+      reason: 'missing session',
+      conversationId: data.conversationId,
+      messageId: data.messageId,
+    });
+    return false;
+  }
+
+  await sendChatMessage(data.senderId, replyText, session.token);
+  await cancelChatNotifications(data.conversationId, data.messageId ? [data.messageId] : []);
+  console.info('[NOTIFICATION] quick reply sent', {
+    conversationId: data.conversationId,
+    messageId: data.messageId,
+  });
+  return true;
+}
 
 if (typeof notifee.onBackgroundEvent === 'function') {
   notifee.onBackgroundEvent(async ({ type, detail }) => {
@@ -23,6 +63,14 @@ if (typeof notifee.onBackgroundEvent === 'function') {
     }
 
     const data = detail?.notification?.data || null;
+    if (
+      type === EventType.ACTION_PRESS &&
+      detail?.pressAction?.id === CHAT_REPLY_ACTION_ID
+    ) {
+      await sendQuickReplyFromNotification(detail);
+      return;
+    }
+
     if (data?.screen === 'chat') {
       await AsyncStorage.setItem(PENDING_NOTIFICATION_PRESS_KEY, JSON.stringify(data));
     }
@@ -71,25 +119,72 @@ export async function showChatNotification({
   conversationId,
   senderId,
   otherUserId,
+  senderProfileImageUrl,
+  appState,
 }) {
+  if (appState === 'active') {
+    console.info('[NOTIFICATION] suppressed because app foreground', {
+      conversationId: String(conversationId || ''),
+      messageId: String(messageId || ''),
+    });
+    return false;
+  }
+
   if (!(await requestNotificationPermission())) return false;
 
   const channelId = await ensureChatChannel();
+  const notificationData = getChatNotificationData({
+    conversationId,
+    messageId,
+    senderId,
+    otherUserId,
+  });
+  const resolvedSenderName = senderName || 'New chat message';
+  const resolvedBody = text || 'Sent an attachment';
+  const senderPerson = {
+    name: resolvedSenderName,
+    id: notificationData.senderId || resolvedSenderName,
+    important: true,
+    ...(senderProfileImageUrl ? { icon: senderProfileImageUrl } : {}),
+  };
+
   await notifee.displayNotification({
     id: `chat-message-${String(messageId || Date.now())}`,
-    title: senderName || 'New chat message',
-    body: text || 'Sent an attachment',
-    data: {
-      conversationId: String(conversationId || ''),
-      messageId: String(messageId || ''),
-      senderId: String(senderId || otherUserId || ''),
-      screen: 'chat',
-    },
+    title: resolvedSenderName,
+    body: resolvedBody,
+    data: notificationData,
     android: {
       channelId,
       smallIcon: 'ic_launcher',
+      largeIcon: senderProfileImageUrl || undefined,
       pressAction: { id: 'default' },
       color: '#6C4DF6',
+      groupId: notificationData.conversationId
+        ? `chat-${notificationData.conversationId}`
+        : undefined,
+      showTimestamp: true,
+      actions: notificationData.senderId
+        ? [{
+          title: 'Reply',
+          pressAction: { id: CHAT_REPLY_ACTION_ID },
+          input: {
+            allowFreeFormInput: true,
+            placeholder: 'Reply...',
+          },
+        }]
+        : undefined,
+      style: {
+        type: AndroidStyle.MESSAGING,
+        person: {
+          name: APP_NAME,
+          id: 'medi-current-user',
+        },
+        messages: [{
+          text: resolvedBody,
+          timestamp: Date.now(),
+          person: senderPerson,
+        }],
+      },
     },
     ios: {
       sound: 'default',
@@ -100,6 +195,10 @@ export async function showChatNotification({
         list: true,
       },
     },
+  });
+  console.info('[NOTIFICATION] displayed because app background', {
+    conversationId: notificationData.conversationId,
+    messageId: notificationData.messageId,
   });
   return true;
 }
@@ -145,6 +244,17 @@ export async function getInitialNotificationData() {
 
 export function onNotificationPress(listener) {
   return notifee.onForegroundEvent(({ type, detail }) => {
+    if (
+      type === EventType.ACTION_PRESS &&
+      detail?.pressAction?.id === CHAT_REPLY_ACTION_ID
+    ) {
+      sendQuickReplyFromNotification(detail)
+        .catch(error => console.warn('[NOTIFICATION] quick reply failed', {
+          message: String(error?.message || 'Reply failed.').slice(0, 160),
+        }));
+      return;
+    }
+
     if (type === EventType.PRESS || type === EventType.ACTION_PRESS) {
       listener(detail?.notification?.data || null);
     }

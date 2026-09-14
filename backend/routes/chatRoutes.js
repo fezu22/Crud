@@ -477,7 +477,11 @@ router.post('/call-event', async (req, res, next) => {
       { conversationId, callSessionId, type: 'call' },
       { $set: data }, { upsert: true, new: true, setDefaultsOnInsert: true },
     );
-    const event = { ...message.toObject(), fromName: req.user.name || req.user.email || 'Medi user' };
+    const event = {
+      ...message.toObject(),
+      fromName: req.user.name || req.user.email || 'Medi user',
+      senderProfileImageUrl: req.user.profileImageUrl || '',
+    };
     const io = req.app.get('io');
     io?.to(`conversation:${conversationId}`).emit('chat:message', event);
     io?.to(`user:${String(recipient._id)}`).emit('chat:message', event);
@@ -577,6 +581,7 @@ router.post(
       const chatEvent = {
         ...message.toObject(),
         fromName: req.user.name || req.user.email || 'Medi user',
+        senderProfileImageUrl: req.user.profileImageUrl || '',
       };
       io?.to(`conversation:${conversationId}`).emit('chat:message', chatEvent);
       io?.to(`user:${String(other._id)}`).emit('chat:message', chatEvent);
@@ -972,6 +977,7 @@ router.post(
     const chatEvent = {
       ...message.toObject(),
       fromName: req.user.name || req.user.email || 'Medi user',
+      senderProfileImageUrl: req.user.profileImageUrl || '',
     };
     io?.to(`conversation:${conversationId}`).emit('chat:message', chatEvent);
     io?.to(`user:${String(other._id)}`).emit('chat:message', chatEvent);
