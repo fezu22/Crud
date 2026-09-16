@@ -624,8 +624,10 @@ function AppContent() {
   }
 
   async function unlockWithBiometrics() {
+    let session;
     try {
-      const session = await loadSession({
+      session = await loadSession({
+        biometricProtected: true,
         authenticationPrompt: {
           title: 'Unlock Medi',
           subtitle: 'Use your biometric to continue',
@@ -635,25 +637,38 @@ function AppContent() {
       if (!session?.token || !session?.user) {
         throw new Error('Your secure session is unavailable. Please use your password to sign in.');
       }
-      let fresh;
-      try {
-        fresh = await getCurrentUser(session.token);
-      } catch (error) {
-        if (isAuthFailure(error)) {
-          await clearSession();
-          setBiometricEnabled(false);
-          showPasswordLogin();
-          throw new Error('Your session has expired. Please sign in with your password.');
-        }
-        throw error;
-      }
+      console.info('[BIOMETRIC] prompt success');
       setToken(session.token);
-      setUser(fresh.user || session.user);
+      setUser(session.user);
       setBiometricLocked(false);
-      await saveSession(session.token, fresh.user || session.user);
+      console.info('[BIOMETRIC] secure session restored');
+      console.info('[BIOMETRIC] app unlocked');
+
+      // A network refresh never gates a successful native biometric unlock.
+      validateRestoredBiometricSession(session);
     } catch (error) {
       // Failure/cancel keeps the authenticated area inaccessible and does not re-prompt.
       showError('Could not unlock Medi', error instanceof Error ? error : new Error('Biometric authentication failed.'));
+    }
+  }
+
+  async function validateRestoredBiometricSession(session) {
+    try {
+      const fresh = await getCurrentUser(session.token);
+      if (fresh?.user) {
+        setUser(fresh.user);
+        await saveSession(session.token, fresh.user);
+      }
+    } catch (error) {
+      if (isAuthFailure(error)) {
+        console.info('[BIOMETRIC] backend validation auth failure');
+        authGenerationRef.current += 1;
+        await clearSession();
+        setBiometricEnabled(false);
+        showPasswordLogin();
+        return;
+      }
+      console.info('[BIOMETRIC] backend validation temporary failure');
     }
   }
 

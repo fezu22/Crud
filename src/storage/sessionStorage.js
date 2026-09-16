@@ -28,11 +28,13 @@ function profileImageKey(userId) {
   return `@medi_profile_image_${userId}`;
 }
 
-export async function loadSession({ authenticationPrompt } = {}) {
+export async function loadSession({ authenticationPrompt, biometricProtected = false } = {}) {
   let secure = false;
   try {
     secure = await Keychain.getGenericPassword({
-      ...secureOptions(Boolean(authenticationPrompt)),
+      // The protected credential must always be read with the same service and
+      // BIOMETRY_CURRENT_SET access-control configuration used to write it.
+      ...secureOptions(biometricProtected),
       ...(authenticationPrompt ? { authenticationPrompt } : {}),
     });
   } catch (error) {
