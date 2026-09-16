@@ -27,6 +27,7 @@ import CloudinaryAlert from './src/components/CloudinaryAlert';
 import BottomNav from './src/navigation/BottomNav';
 import HomeScreen from './src/screens/HomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
+import BiometricLockScreen from './src/screens/BiometricLockScreen';
 import MediaLibraryScreen from './src/screens/MediaLibraryScreen';
 import UploadScreen from './src/screens/UploadScreen';
 import ConnectCloudStorageScreen from './src/screens/ConnectCloudStorageScreen';
@@ -69,6 +70,9 @@ import {
 } from './src/services/api';
 import {
   clearSession,
+  disableBiometricForSession,
+  enableBiometricForSession,
+  getBiometricSessionState,
   loadProfileImage,
   loadSession,
   saveProfileImage,
@@ -228,6 +232,8 @@ function AppContent() {
   const [profileImage, setProfileImage] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
+  const [biometricLocked, setBiometricLocked] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [media, setMedia] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -564,6 +570,12 @@ function AppContent() {
     const restoreGeneration = authGenerationRef.current;
 
     try {
+      const biometricState = await getBiometricSessionState();
+      setBiometricEnabled(biometricState.enabled);
+      if (biometricState.enabled && biometricState.user) {
+        setBiometricLocked(true);
+        return;
+      }
       const session = await loadSession();
       if (!session.token || authGenerationRef.current !== restoreGeneration) {
         return;
@@ -608,6 +620,64 @@ function AppContent() {
       if (authGenerationRef.current === restoreGeneration) {
         setBootLoading(false);
       }
+    }
+  }
+
+  async function unlockWithBiometrics() {
+    try {
+      const session = await loadSession({
+        authenticationPrompt: {
+          title: 'Unlock Medi',
+          subtitle: 'Use your biometric to continue',
+          cancel: 'Cancel',
+        },
+      });
+      if (!session?.token || !session?.user) {
+        throw new Error('Your secure session is unavailable. Please use your password to sign in.');
+      }
+      let fresh;
+      try {
+        fresh = await getCurrentUser(session.token);
+      } catch (error) {
+        if (isAuthFailure(error)) {
+          await clearSession();
+          setBiometricEnabled(false);
+          showPasswordLogin();
+          throw new Error('Your session has expired. Please sign in with your password.');
+        }
+        throw error;
+      }
+      setToken(session.token);
+      setUser(fresh.user || session.user);
+      setBiometricLocked(false);
+      await saveSession(session.token, fresh.user || session.user);
+    } catch (error) {
+      // Failure/cancel keeps the authenticated area inaccessible and does not re-prompt.
+      showError('Could not unlock Medi', error instanceof Error ? error : new Error('Biometric authentication failed.'));
+    }
+  }
+
+  function showPasswordLogin() {
+    setBiometricLocked(false);
+    setToken(null);
+    setUser(null);
+    resetWorkspace();
+  }
+
+  async function toggleBiometric(nextEnabled) {
+    try {
+      if (!token || !user) throw new Error('Sign in with your password before changing biometric login.');
+      if (nextEnabled) {
+        await enableBiometricForSession(token, user);
+        setBiometricEnabled(true);
+        showSuccess('Biometric login enabled.');
+      } else {
+        await disableBiometricForSession(token, user);
+        setBiometricEnabled(false);
+        showSuccess('Biometric login disabled.');
+      }
+    } catch (error) {
+      showError('Biometric Login', error instanceof Error ? error : new Error('Could not update biometric login.'));
     }
   }
 
@@ -732,6 +802,7 @@ function AppContent() {
         authGenerationRef.current += 1;
         setToken(null);
         setUser(null);
+        setBiometricEnabled(false);
         clearSessionKey();
         resetWorkspace();
         await clearSession();
@@ -852,6 +923,16 @@ function AppContent() {
     );
   }
 
+  if (biometricLocked) {
+    return (
+      <BiometricLockScreen
+        theme={preferences.theme}
+        onUnlock={unlockWithBiometrics}
+        onUsePassword={showPasswordLogin}
+      />
+    );
+  }
+
   if (!token) {
     return (
       <SafeAreaProvider>
@@ -963,6 +1044,8 @@ function AppContent() {
               profileImage={profileImage} onEditProfileImage={editProfileImage}
               onError={error => showError('Could not update profile photo', error)}
               theme={preferences.theme} notifications={preferences.notifications}
+              biometricEnabled={biometricEnabled}
+              onToggleBiometric={toggleBiometric}
               onToggleTheme={preferences.toggleTheme}
               onToggleNotifications={preferences.toggleNotifications}
               onConnectCloud={() => setConnectCloudOpen(true)}

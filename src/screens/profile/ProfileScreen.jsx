@@ -41,6 +41,8 @@ export default function ProfileScreen({
   notifications,
   onToggleTheme,
   onToggleNotifications,
+  biometricEnabled,
+  onToggleBiometric,
   onConnectCloud,
   profileImage,
   onEditProfileImage,
@@ -148,6 +150,13 @@ export default function ProfileScreen({
           }
           value={notifications}
           onChange={onToggleNotifications}
+        />
+        <Setting
+          icon="◎"
+          title="Biometric Login"
+          subtitle={biometricEnabled ? 'Unlock Medi with your device biometrics' : 'Use fingerprint, Face ID, or Touch ID'}
+          value={biometricEnabled}
+          onChange={onToggleBiometric}
         />
         <Setting
           icon={dark ? '☀' : '☾'}
