@@ -27,7 +27,6 @@ import CloudinaryAlert from './src/components/CloudinaryAlert';
 import BottomNav from './src/navigation/BottomNav';
 import HomeScreen from './src/screens/HomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
-import BiometricLockScreen from './src/screens/BiometricLockScreen';
 import MediaLibraryScreen from './src/screens/MediaLibraryScreen';
 import UploadScreen from './src/screens/UploadScreen';
 import ConnectCloudStorageScreen from './src/screens/ConnectCloudStorageScreen';
@@ -73,6 +72,8 @@ import {
   disableBiometricForSession,
   enableBiometricForSession,
   getBiometricSessionState,
+  getRememberedAccount,
+  forgetRememberedAccount,
   loadProfileImage,
   loadSession,
   saveProfileImage,
@@ -232,8 +233,8 @@ function AppContent() {
   const [profileImage, setProfileImage] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
-  const [biometricLocked, setBiometricLocked] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [rememberedAccount, setRememberedAccount] = useState(null);
   const [media, setMedia] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -271,6 +272,7 @@ function AppContent() {
   const notificationPromptUserRef = useRef(null);
   const foregroundRestoreRef = useRef(false);
   const appStateRef = useRef(AppState.currentState);
+  const backgroundLockTimerRef = useRef(null);
   const handledNotificationPressRef = useRef(new Set());
   const {
     tasks, setTasks, selectedTask, setSelectedTask, taskFormOpen, editingTask,
@@ -311,7 +313,6 @@ function AppContent() {
     return host;
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { restoreSession(); }, []);
   useEffect(() => {
     let active = true;
@@ -387,6 +388,37 @@ function AppContent() {
 
     return () => subscription.remove();
   }, [preferences.notifications, token]);
+  useEffect(() => {
+    const clearBackgroundTimer = () => {
+      if (backgroundLockTimerRef.current) {
+        clearTimeout(backgroundLockTimerRef.current);
+        backgroundLockTimerRef.current = null;
+      }
+    };
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        clearBackgroundTimer();
+        return;
+      }
+      if (!token || backgroundLockTimerRef.current) return;
+
+      // System prompts and pickers commonly cause short inactive/background
+      // transitions. Lock only after a sustained background period.
+      backgroundLockTimerRef.current = setTimeout(() => {
+        backgroundLockTimerRef.current = null;
+        authGenerationRef.current += 1;
+        setToken(null);
+        setUser(null);
+        resetWorkspace();
+      }, 15000);
+    });
+    return () => {
+      clearBackgroundTimer();
+      subscription.remove();
+    };
+    // resetWorkspace only uses stable state setters and hook resetters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
   useEffect(() => {
     if (!token || !zegoUserId) {
       console.info('[ZEGOCLOUD][release-check]', {
@@ -567,65 +599,24 @@ function AppContent() {
   }, [preferences.notifications, preferences.ready, tasks, token]);
 
   async function restoreSession() {
-    const restoreGeneration = authGenerationRef.current;
-
     try {
+      const account = await getRememberedAccount();
       const biometricState = await getBiometricSessionState();
-      setBiometricEnabled(biometricState.enabled);
-      if (biometricState.enabled && biometricState.user) {
-        setBiometricLocked(true);
-        return;
-      }
-      const session = await loadSession();
-      if (!session.token || authGenerationRef.current !== restoreGeneration) {
-        return;
-      }
-
-      if (session.user) {
-        setToken(session.token);
-        setUser(session.user);
-        setBootLoading(false);
-      }
-
-      let fresh;
-
-      try {
-        fresh = await getCurrentUser(session.token);
-      } catch (error) {
-        if (isAuthFailure(error)) {
-          authGenerationRef.current += 1;
-          setToken(null);
-          setUser(null);
-          setBootLoading(false);
-          clearSessionKey();
-          resetWorkspace();
-          await clearSession();
-          console.warn('Stored session expired; user signed out.');
-        } else {
-          console.warn('Could not refresh stored session; keeping cached login:', error);
-        }
-        return;
-      }
-
-      if (authGenerationRef.current !== restoreGeneration) {
-        return;
-      }
-
-      setToken(session.token);
-      setUser(fresh.user);
-      await saveSession(session.token, fresh.user);
+      setRememberedAccount(account);
+      setBiometricEnabled(Boolean(account && biometricState.enabled));
+      if (account) console.info('[AUTH] remembered account loaded');
     } catch (error) {
-      console.warn('Failed to load session:', error);
+      console.warn('[AUTH] failed to load remembered account');
     } finally {
-      if (authGenerationRef.current === restoreGeneration) {
-        setBootLoading(false);
-      }
+      setBootLoading(false);
     }
   }
 
   async function unlockWithBiometrics() {
     let session;
+    const unlockGeneration = authGenerationRef.current;
     try {
+      console.info('[BIOMETRIC] prompt requested');
       session = await loadSession({
         biometricProtected: true,
         authenticationPrompt: {
@@ -640,43 +631,52 @@ function AppContent() {
       console.info('[BIOMETRIC] prompt success');
       setToken(session.token);
       setUser(session.user);
-      setBiometricLocked(false);
       console.info('[BIOMETRIC] secure session restored');
       console.info('[BIOMETRIC] app unlocked');
 
       // A network refresh never gates a successful native biometric unlock.
-      validateRestoredBiometricSession(session);
+      validateRestoredBiometricSession(session, unlockGeneration);
     } catch (error) {
       // Failure/cancel keeps the authenticated area inaccessible and does not re-prompt.
       showError('Could not unlock Medi', error instanceof Error ? error : new Error('Biometric authentication failed.'));
     }
   }
 
-  async function validateRestoredBiometricSession(session) {
+  async function validateRestoredBiometricSession(session, unlockGeneration) {
     try {
       const fresh = await getCurrentUser(session.token);
+      if (authGenerationRef.current !== unlockGeneration) return;
       if (fresh?.user) {
         setUser(fresh.user);
+        setRememberedAccount(fresh.user);
         await saveSession(session.token, fresh.user);
       }
     } catch (error) {
+      if (authGenerationRef.current !== unlockGeneration) return;
       if (isAuthFailure(error)) {
-        console.info('[BIOMETRIC] backend validation auth failure');
+        console.info('[AUTH] session invalid');
         authGenerationRef.current += 1;
-        await clearSession();
+        await clearSession({ preserveRememberedAccount: true });
         setBiometricEnabled(false);
         showPasswordLogin();
         return;
       }
-      console.info('[BIOMETRIC] backend validation temporary failure');
+      console.info('[AUTH] session validation temporary failure');
     }
   }
 
   function showPasswordLogin() {
-    setBiometricLocked(false);
     setToken(null);
     setUser(null);
     resetWorkspace();
+  }
+
+  async function useAnotherAccount() {
+    authGenerationRef.current += 1;
+    await forgetRememberedAccount();
+    setRememberedAccount(null);
+    setBiometricEnabled(false);
+    showPasswordLogin();
   }
 
   async function toggleBiometric(nextEnabled) {
@@ -762,12 +762,14 @@ function AppContent() {
     authGenerationRef.current = authGeneration;
 
     try {
-      const data = await loginUser(credentials.identifier, credentials.password);
+      const identifier = credentials.identifier || getUserStorageId(rememberedAccount);
+      const data = await loginUser(identifier, credentials.password);
       if (authGenerationRef.current !== authGeneration) return;
       if (data.user?.encryptionSalt) deriveSessionKey(credentials.password, data.user.encryptionSalt);
       setToken(data.token);
       setUser(data.user);
       await saveSession(data.token, data.user);
+      setRememberedAccount(data.user);
     } catch (error) {
       showError('Sign In Failed', error);
       throw error;
@@ -795,6 +797,7 @@ function AppContent() {
       setToken(data.token);
       setUser(data.user);
       await saveSession(data.token, data.user);
+      setRememberedAccount(data.user);
     } catch (error) {
       clearSessionKey();
       const safeError = error instanceof Error
@@ -818,6 +821,7 @@ function AppContent() {
         setToken(null);
         setUser(null);
         setBiometricEnabled(false);
+        setRememberedAccount(null);
         clearSessionKey();
         resetWorkspace();
         await clearSession();
@@ -938,22 +942,20 @@ function AppContent() {
     );
   }
 
-  if (biometricLocked) {
-    return (
-      <BiometricLockScreen
-        theme={preferences.theme}
-        onUnlock={unlockWithBiometrics}
-        onUsePassword={showPasswordLogin}
-      />
-    );
-  }
-
   if (!token) {
     return (
       <SafeAreaProvider>
         <AlertNotificationRoot theme={preferences.theme}>
           <View className="flex-1 bg-canvas" style={appThemes[preferences.theme]}>
-            <LoginScreen onLogin={login} onRegister={register} isLoading={authLoading} />
+            <LoginScreen
+              onLogin={login}
+              onRegister={register}
+              isLoading={authLoading}
+              rememberedAccount={rememberedAccount}
+              biometricEnabled={biometricEnabled}
+              onBiometric={unlockWithBiometrics}
+              onUseAnotherAccount={useAnotherAccount}
+            />
             <ConfirmDialog config={confirm} onCancel={closeConfirm} />
           </View>
         </AlertNotificationRoot>

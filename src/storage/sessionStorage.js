@@ -49,6 +49,10 @@ export async function loadSession({ authenticationPrompt, biometricProtected = f
     }
   }
 
+  // Never fall back to the legacy AsyncStorage token during a biometric unlock.
+  // A biometric-enabled account must be unlocked from the protected secure item.
+  if (biometricProtected) return { token: null, user: null, source: 'secure' };
+
   const [token, rawUser] = await Promise.all([
     AsyncStorage.getItem(TOKEN_KEY),
     AsyncStorage.getItem(USER_KEY),
@@ -70,15 +74,30 @@ export async function saveSession(token, user) {
   if (accountId(user)) await AsyncStorage.setItem(ACTIVE_ACCOUNT_KEY, String(accountId(user)));
 }
 
-export async function clearSession() {
+export async function clearSession({ preserveRememberedAccount = false } = {}) {
   const rawUser = await AsyncStorage.getItem(USER_KEY);
   const biometricPreference = biometricKey(rawUser ? JSON.parse(rawUser) : null);
+  await Promise.all([
+    AsyncStorage.removeItem(TOKEN_KEY),
+    ...(preserveRememberedAccount ? [] : [AsyncStorage.removeItem(USER_KEY), AsyncStorage.removeItem(ACTIVE_ACCOUNT_KEY)]),
+    Keychain.resetGenericPassword({ service: SESSION_SERVICE }),
+    ...(biometricPreference ? [AsyncStorage.removeItem(biometricPreference)] : []),
+  ]);
+}
+
+export async function getRememberedAccount() {
+  const rawUser = await AsyncStorage.getItem(USER_KEY);
+  return rawUser ? JSON.parse(rawUser) : null;
+}
+
+export async function forgetRememberedAccount() {
+  // This is an account switch, not a logout: the account-scoped preference can
+  // remain, but its protected credential must not be available from this entry screen.
   await Promise.all([
     AsyncStorage.removeItem(TOKEN_KEY),
     AsyncStorage.removeItem(USER_KEY),
     AsyncStorage.removeItem(ACTIVE_ACCOUNT_KEY),
     Keychain.resetGenericPassword({ service: SESSION_SERVICE }),
-    ...(biometricPreference ? [AsyncStorage.removeItem(biometricPreference)] : []),
   ]);
 }
 

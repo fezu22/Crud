@@ -189,13 +189,22 @@ function RegisterModal({ visible, onClose, onRegister, isBusy }) {
   );
 }
 
-export default function LoginScreen({ onLogin, onRegister, isLoading }) {
+export default function LoginScreen({
+  onLogin,
+  onRegister,
+  isLoading,
+  rememberedAccount,
+  biometricEnabled,
+  onBiometric,
+  onUseAnotherAccount,
+}) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
   const [tagline, setTagline] = useState(0);
+  const [biometricBusy, setBiometricBusy] = useState(false);
 
   const fade = useRef(new Animated.Value(1)).current;
   const reduceMotion = useReducedMotion();
@@ -224,8 +233,14 @@ export default function LoginScreen({ onLogin, onRegister, isLoading }) {
     return () => clearInterval(timer);
   }, [fade, reduceMotion]);
 
+  const rememberedIdentifier = rememberedAccount?.email || rememberedAccount?.phoneNumber || '';
+
+  useEffect(() => {
+    setIdentifier(rememberedIdentifier);
+  }, [rememberedIdentifier]);
+
   const submit = async () => {
-    if (!identifier.trim() || !password) {
+    if (!password || (!rememberedIdentifier && !identifier.trim())) {
       setError('Enter your email/phone and password.');
       return;
     }
@@ -233,9 +248,20 @@ export default function LoginScreen({ onLogin, onRegister, isLoading }) {
     setError('');
 
     try {
-      await onLogin({ identifier: identifier.trim(), password });
+      await onLogin({ identifier: (rememberedIdentifier || identifier).trim(), password });
     } catch (e) {
       setError(e.message);
+    }
+  };
+
+  const unlockWithBiometrics = async () => {
+    if (!onBiometric || biometricBusy) return;
+    setError('');
+    setBiometricBusy(true);
+    try {
+      await onBiometric();
+    } finally {
+      setBiometricBusy(false);
     }
   };
 
@@ -249,7 +275,7 @@ export default function LoginScreen({ onLogin, onRegister, isLoading }) {
         </View>
 
         <Text className="mt-6 text-5xl font-black tracking-tight text-white">
-          Tidy
+          Medi
         </Text>
 
         <Animated.Text
@@ -275,16 +301,19 @@ export default function LoginScreen({ onLogin, onRegister, isLoading }) {
             Welcome back
           </Text>
 
-          <Text className="mb-7 mt-2 text-sm text-muted">
-            Sign in and continue where you left off.
-          </Text>
-
-          <Field
-            label="Email or phone"
-            value={identifier}
-            onChangeText={setIdentifier}
-            placeholder="you@example.com"
-          />
+          {rememberedIdentifier ? (
+            <View className="mb-7 mt-2 rounded-2xl border border-line bg-surface px-4 py-3">
+              <Text className="text-xs font-bold uppercase tracking-wider text-muted">Saved account</Text>
+              <Text className="mt-1 text-base font-bold text-ink">{rememberedIdentifier}</Text>
+            </View>
+          ) : (
+            <Field
+              label="Email or phone"
+              value={identifier}
+              onChangeText={setIdentifier}
+              placeholder="you@example.com"
+            />
+          )}
 
           <Field
             label="Password"
@@ -311,17 +340,38 @@ export default function LoginScreen({ onLogin, onRegister, isLoading }) {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text className="text-base font-extrabold text-white">
-                Sign in
+                Login
               </Text>
             )}
           </TouchableOpacity>
+
+          {rememberedIdentifier && biometricEnabled ? (
+            <>
+              <Text className="my-5 text-center text-xs font-bold text-muted">OR</Text>
+              <TouchableOpacity
+                className="h-14 items-center justify-center rounded-2xl border border-brand bg-surface"
+                onPress={unlockWithBiometrics}
+                disabled={isLoading || biometricBusy}
+                accessibilityRole="button"
+                accessibilityLabel="Use fingerprint"
+              >
+                {biometricBusy ? <ActivityIndicator color="#6750E8" /> : <Text className="text-base font-extrabold text-brand">Use Fingerprint</Text>}
+              </TouchableOpacity>
+            </>
+          ) : null}
+
+          {rememberedIdentifier ? (
+            <TouchableOpacity className="mt-6 items-center" onPress={onUseAnotherAccount} disabled={isLoading || biometricBusy}>
+              <Text className="text-sm font-semibold text-muted">Use another account</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <TouchableOpacity
             className="mt-7 items-center"
             onPress={() => setRegisterOpen(true)}
           >
             <Text className="text-sm text-muted">
-              New to Tidy?{' '}
+              New to Medi?{' '}
               <Text className="font-extrabold text-brand">
                 Create an account
               </Text>
